@@ -1,0 +1,2632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webflow Project Health Score</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 32px 24px;
+      line-height: 1.5;
+    }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 32px; }
+    header h1 { font-size: 32px; color: #fff; margin-bottom: 8px; }
+    header p { color: #666; font-size: 14px; }
+
+    /* Paste Zone */
+    .paste-zone {
+      border: 2px dashed #333;
+      border-radius: 16px;
+      padding: 60px 40px;
+      text-align: center;
+      transition: all 0.2s;
+      cursor: pointer;
+      margin-bottom: 24px;
+    }
+    .paste-zone:hover, .paste-zone.active { border-color: #4a9eff; background: rgba(74, 158, 255, 0.05); }
+    .paste-zone .icon { font-size: 64px; margin-bottom: 16px; }
+    .paste-zone h2 { font-size: 20px; color: #888; margin-bottom: 8px; }
+    .paste-zone p { font-size: 14px; color: #555; }
+    .error-msg { margin-top: 16px; padding: 12px 16px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; color: #ef4444; font-size: 13px; }
+    .hidden { display: none !important; }
+
+    /* Collected Pages */
+    .collected-section { background: #141414; border: 1px solid #252525; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+    .collected-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .collected-header h3 { font-size: 16px; color: #fff; }
+    .pages-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .page-chip { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #1a1a1a; border-radius: 10px; }
+    .page-chip-name { font-weight: 500; color: #e0e0e0; }
+    .page-chip-info { display: flex; align-items: center; gap: 16px; }
+    .page-chip-stats { display: flex; gap: 12px; font-size: 13px; color: #888; }
+    .page-chip-remove { background: none; border: none; color: #555; cursor: pointer; font-size: 20px; padding: 4px 8px; line-height: 1; }
+    .page-chip-remove:hover { color: #ef4444; }
+
+    /* Buttons */
+    .btn { padding: 12px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background: #4a9eff; color: #fff; }
+    .btn-primary:hover { background: #3a8eef; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-success:hover { background: #1db954; }
+    .btn-secondary { background: #252525; color: #e0e0e0; }
+    .btn-secondary:hover { background: #333; }
+    .btn-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+    .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-group { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn-sm { padding: 8px 14px; font-size: 13px; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal { background: #1a1a1a; border-radius: 16px; padding: 28px; width: 90%; max-width: 400px; }
+    .modal h3 { font-size: 18px; color: #fff; margin-bottom: 8px; }
+    .modal p { font-size: 14px; color: #888; margin-bottom: 20px; }
+    .modal input { width: 100%; padding: 14px 16px; background: #252525; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; font-size: 15px; margin-bottom: 20px; }
+    .modal input:focus { outline: none; border-color: #4a9eff; }
+    .modal-actions { display: flex; gap: 12px; }
+    .modal-actions .btn { flex: 1; }
+
+    /* Results */
+    .results-section { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .card { background: #141414; border: 1px solid #252525; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .card h2 { font-size: 18px; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+
+    /* Score Header */
+    .score-header { display: flex; align-items: flex-start; gap: 32px; margin-bottom: 24px; }
+    .score-circle { position: relative; width: 160px; height: 160px; flex-shrink: 0; }
+    .score-circle svg { transform: rotate(-90deg); width: 100%; height: 100%; }
+    .score-circle .bg { fill: none; stroke: #252525; stroke-width: 12; }
+    .score-circle .progress { fill: none; stroke: #22c55e; stroke-width: 12; stroke-linecap: round; stroke-dasharray: 408; stroke-dashoffset: 408; transition: stroke-dashoffset 1s ease, stroke 0.3s ease; }
+    .score-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+    .score-value { display: block; font-size: 48px; font-weight: 700; color: #22c55e; }
+    .score-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+    .score-info { flex: 1; }
+    .grade-badge { display: inline-block; padding: 8px 18px; border-radius: 8px; font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+    .complexity-badge { display: inline-block; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; margin-left: 12px; }
+    .verdict { font-size: 15px; color: #888; line-height: 1.6; margin-bottom: 16px; }
+    .framework-badge { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; }
+    .framework-badge.detected { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); color: #22c55e; }
+    .framework-badge.none { background: rgba(100, 100, 100, 0.1); border: 1px solid rgba(100, 100, 100, 0.3); color: #888; }
+    .intentionality { margin-top: 16px; padding: 14px 18px; background: #1a1a1a; border-radius: 10px; }
+    .intentionality-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .intentionality-label { font-size: 13px; color: #888; }
+    .intentionality-value { font-size: 15px; font-weight: 600; }
+    .intentionality-bar { height: 6px; background: #252525; border-radius: 3px; overflow: hidden; }
+    .intentionality-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+
+    /* Metrics Grid */
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .metric-card { background: #1a1a1a; border-radius: 10px; padding: 18px; }
+    .metric-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .metric-title { font-size: 14px; color: #888; }
+    .metric-score { font-size: 14px; font-weight: 600; padding: 4px 12px; border-radius: 6px; }
+    .metric-score.good { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .metric-score.warning { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .metric-score.bad { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .metric-bar { height: 8px; background: #252525; border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+    .metric-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease; }
+    .metric-detail { font-size: 12px; color: #666; }
+    .metric-issues { margin-top: 10px; padding-top: 10px; border-top: 1px solid #252525; }
+    .metric-issue { font-size: 11px; color: #888; padding: 4px 0; display: flex; align-items: flex-start; gap: 6px; }
+    .metric-issue::before { content: "•"; color: #ef4444; }
+
+    /* Brief Section */
+    .brief-section { background: #0f1419; border: 1px solid #1e2a3a; border-radius: 12px; padding: 24px; }
+    .brief-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .brief-header h3 { font-size: 16px; color: #fff; }
+    .pages-analyzed { font-size: 13px; color: #666; }
+    .brief-content { font-size: 14px; color: #c0c0c0; line-height: 1.7; }
+    .brief-content p { margin-bottom: 16px; }
+    .brief-content strong { color: #fff; }
+
+    /* Priority Issues */
+    .priority-section { margin-top: 24px; }
+    .priority-section h4 { font-size: 14px; color: #888; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .priority-list { display: flex; flex-direction: column; gap: 12px; }
+    .priority-item { display: flex; gap: 14px; padding: 14px 16px; background: #141414; border-radius: 10px; border-left: 3px solid; }
+    .priority-item.critical { border-color: #ef4444; }
+    .priority-item.high { border-color: #f97316; }
+    .priority-item.medium { border-color: #fbbf24; }
+    .priority-item.low { border-color: #22c55e; }
+    .priority-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; height: fit-content; }
+    .priority-item.critical .priority-badge { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .priority-item.high .priority-badge { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+    .priority-item.medium .priority-badge { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .priority-item.low .priority-badge { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .priority-content { flex: 1; }
+    .priority-title { font-size: 14px; color: #e0e0e0; margin-bottom: 4px; }
+    .priority-desc { font-size: 12px; color: #888; }
+    .priority-impact { font-size: 11px; color: #666; margin-top: 6px; font-style: italic; }
+
+    /* Quick Wins */
+    .quick-wins { margin-top: 24px; padding: 18px; background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 10px; }
+    .quick-wins h4 { font-size: 14px; color: #22c55e; margin-bottom: 12px; }
+    .quick-win-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: 13px; color: #c0c0c0; }
+    .quick-win-item::before { content: "✓"; color: #22c55e; font-weight: bold; }
+
+    /* Risk Assessment */
+    .risk-section { margin-top: 24px; }
+    .risk-section h4 { font-size: 14px; color: #888; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .risk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .risk-item { padding: 14px; background: #141414; border-radius: 8px; }
+    .risk-class { font-family: 'SF Mono', Monaco, monospace; font-size: 13px; color: #4a9eff; margin-bottom: 6px; }
+    .risk-reason { font-size: 11px; color: #888; }
+    .risk-count { font-size: 11px; color: #f97316; margin-top: 4px; }
+
+    /* Stats Row */
+    .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: #1a1a1a; border-radius: 10px; padding: 16px; text-align: center; }
+    .stat-value { display: block; font-size: 28px; font-weight: 700; color: #4a9eff; margin-bottom: 4px; }
+    .stat-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Page Breakdown */
+    .breakdown-grid { display: grid; gap: 12px; }
+    .breakdown-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #1a1a1a; border-radius: 10px; }
+    .breakdown-name { font-weight: 500; font-size: 15px; }
+    .breakdown-stats { display: flex; gap: 20px; font-size: 13px; color: #888; }
+    .breakdown-stat.warning { color: #fbbf24; }
+    .breakdown-stat.bad { color: #ef4444; }
+
+    /* Findings Lists */
+    .findings-section { margin-bottom: 24px; }
+    .findings-section h3 { font-size: 14px; color: #888; margin-bottom: 14px; }
+    .findings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+    .finding-item { padding: 14px; background: #1a1a1a; border-radius: 8px; border-left: 3px solid #f97316; }
+    .finding-title { font-size: 13px; color: #e0e0e0; margin-bottom: 6px; font-weight: 500; }
+    .finding-detail { font-size: 12px; color: #888; }
+    .finding-classes { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .finding-class { font-size: 11px; font-family: 'SF Mono', Monaco, monospace; padding: 3px 8px; background: #252525; border-radius: 4px; color: #888; }
+
+    /* Color/Spacing Grids */
+    .color-pairs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .color-pair { padding: 12px; background: #1a1a1a; border-radius: 8px; }
+    .color-pair-swatches { display: flex; gap: 8px; margin-bottom: 8px; }
+    .color-pair-swatch { width: 40px; height: 40px; border-radius: 6px; border: 1px solid #333; }
+    .color-pair-info { font-size: 11px; color: #888; }
+    .color-pair-diff { font-size: 11px; color: #f97316; }
+
+    /* Add More Panel */
+    .add-more-panel { background: #141414; border: 1px solid #4a9eff; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    .add-more-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .add-more-header h3 { font-size: 16px; color: #fff; margin: 0; }
+    .add-more-hint { font-size: 13px; color: #888; margin-bottom: 16px; }
+    .inline-pages-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .inline-page-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: #1a1a1a; border-radius: 6px; font-size: 13px; }
+    .inline-page-chip .count { color: #888; }
+    .inline-page-chip.new { border: 1px solid #22c55e; }
+    .inline-page-chip .remove-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 0 2px; }
+    .inline-page-chip .remove-btn:hover { color: #ef4444; }
+    .add-more-actions { display: flex; gap: 12px; }
+
+    /* Export */
+    .export-section { background: #1a1a1a; border-radius: 10px; padding: 20px; }
+    .export-actions { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .export-output { width: 100%; height: 150px; padding: 14px; background: #0a0a0a; border: 1px solid #333; border-radius: 8px; font-family: 'SF Mono', Monaco, monospace; font-size: 11px; color: #666; resize: vertical; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); background: #22c55e; color: #fff; padding: 14px 28px; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 2000; animation: toastIn 0.3s ease; }
+    .toast.error { background: #ef4444; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+    /* Script Section */
+    .script-section { background: #141414; border: 1px solid #252525; border-radius: 12px; padding: 24px; margin-top: 24px; }
+    .script-section h3 { font-size: 16px; color: #fff; margin-bottom: 12px; }
+    .script-section > p { font-size: 14px; color: #888; margin-bottom: 16px; line-height: 1.6; }
+    .script-code { background: #0a0a0a; padding: 18px; border-radius: 10px; font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: #22c55e; overflow-x: auto; position: relative; }
+    .script-code .copy-btn { position: absolute; top: 10px; right: 10px; padding: 6px 14px; background: #333; border: none; border-radius: 6px; color: #888; font-size: 12px; cursor: pointer; }
+    .script-code .copy-btn:hover { background: #444; color: #e0e0e0; }
+    .empty-msg { color: #555; font-style: italic; }
+
+    /* Collapsible sections */
+    .collapsible-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; }
+    .collapsible-header:hover { opacity: 0.8; }
+    .collapsible-toggle { color: #666; font-size: 12px; }
+    .collapsible-content { overflow: hidden; transition: max-height 0.3s ease; }
+    .collapsible-content.collapsed { max-height: 0; }
+
+    @media (max-width: 700px) {
+      .score-header { flex-direction: column; align-items: center; text-align: center; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .metrics-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🏥 Webflow Project Health</h1>
+      <p>Professional analysis for retainer evaluation and maintainability assessment</p>
+    </header>
+
+    <div id="pasteZone" class="paste-zone">
+      <div class="icon">📋</div>
+      <h2>Paste Webflow JSON here</h2>
+      <p>Copy elements from Webflow Designer (Cmd+C), then paste here (Cmd+V)</p>
+      <div id="errorMsg" class="error-msg hidden"></div>
+    </div>
+
+    <div id="collectedSection" class="collected-section hidden">
+      <div class="collected-header">
+        <h3>📄 Collected Pages (<span id="pageCount">0</span>)</h3>
+        <button class="btn btn-danger btn-sm" id="clearAllBtn">🗑️ Clear All</button>
+      </div>
+      <div id="pagesList" class="pages-list"></div>
+      <div class="btn-group">
+        <button class="btn btn-success" id="analyzeBtn">🔍 Analyze Project</button>
+        <span style="color: #666; font-size: 13px; display: flex; align-items: center;">Paste more pages to add them</span>
+      </div>
+    </div>
+
+    <div id="resultsSection" class="results-section hidden">
+      <!-- Add More Panel -->
+      <div id="addMorePanel" class="add-more-panel hidden">
+        <div class="add-more-header">
+          <h3>➕ Add More Pages</h3>
+          <button class="btn btn-secondary btn-sm" id="closeAddMoreBtn">✕ Close</button>
+        </div>
+        <p class="add-more-hint">Paste more Webflow data to add pages, then click Refresh</p>
+        <div id="inlinePagesList" class="inline-pages-list"></div>
+        <div class="add-more-actions">
+          <button class="btn btn-success" id="refreshAnalysisBtn">🔄 Refresh Analysis</button>
+        </div>
+      </div>
+
+      <!-- Score Overview -->
+      <div class="card">
+        <h2>📊 Analysis Results</h2>
+        <div class="score-header">
+          <div class="score-circle">
+            <svg viewBox="0 0 160 160">
+              <circle class="bg" cx="80" cy="80" r="65"></circle>
+              <circle class="progress" id="scoreProgress" cx="80" cy="80" r="65"></circle>
+            </svg>
+            <div class="score-text">
+              <span class="score-value" id="scoreValue">0</span>
+              <span class="score-label">Health</span>
+            </div>
+          </div>
+          <div class="score-info">
+            <div>
+              <span class="grade-badge" id="gradeBadge">Grade: ?</span>
+              <span class="complexity-badge" id="complexityBadge">Loading...</span>
+            </div>
+            <p class="verdict" id="verdictText">Analyzing...</p>
+            <div class="framework-badge none" id="frameworkBadge">Checking framework...</div>
+            <div class="intentionality">
+              <div class="intentionality-header">
+                <span class="intentionality-label">Intentionality Score</span>
+                <span class="intentionality-value" id="intentionalityValue">0%</span>
+              </div>
+              <div class="intentionality-bar">
+                <div class="intentionality-fill" id="intentionalityFill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="metrics-grid" id="metricsGrid"></div>
+        <div class="stats-row" id="statsRow"></div>
+      </div>
+
+      <!-- Brief -->
+      <div class="card brief-section" id="briefCard">
+        <div class="brief-header">
+          <h3>📋 Analysis Brief</h3>
+          <span class="pages-analyzed" id="pagesAnalyzed">1 page analyzed</span>
+        </div>
+        <div class="brief-content" id="briefContent"></div>
+        
+        <div class="priority-section">
+          <h4>🎯 Priority Recommendations</h4>
+          <div class="priority-list" id="priorityList"></div>
+        </div>
+
+        <div class="quick-wins" id="quickWins">
+          <h4>⚡ Quick Wins</h4>
+          <div id="quickWinsList"></div>
+        </div>
+
+        <div class="risk-section" id="riskSection">
+          <h4>⚠️ High-Risk Classes (Modify with Caution)</h4>
+          <div class="risk-grid" id="riskGrid"></div>
+        </div>
+      </div>
+
+      <!-- Per-Page Breakdown -->
+      <div class="card" id="breakdownCard" style="display:none;">
+        <h2>📄 Per-Page Breakdown</h2>
+        <div class="breakdown-grid" id="pageBreakdown"></div>
+      </div>
+
+      <!-- Detailed Findings -->
+      <div class="card" id="findingsCard">
+        <h2>🔍 Detailed Findings</h2>
+        
+        <div class="findings-section" id="duplicateStylesSection">
+          <h3>🔄 Duplicate Styles (Different Names, Same CSS)</h3>
+          <div class="findings-grid" id="duplicateStylesList"></div>
+        </div>
+
+        <div class="findings-section" id="nearDuplicateColorsSection">
+          <h3>🎨 Near-Duplicate Colors</h3>
+          <div class="color-pairs" id="nearDuplicateColorsList"></div>
+        </div>
+
+        <div class="findings-section" id="inconsistentSpacingSection">
+          <h3>📐 Inconsistent Spacing</h3>
+          <div class="findings-grid" id="inconsistentSpacingList"></div>
+        </div>
+
+        <div class="findings-section" id="autoGeneratedSection">
+          <h3>🤖 Auto-Generated Classes</h3>
+          <div class="findings-grid" id="autoGeneratedList"></div>
+        </div>
+
+        <div class="findings-section" id="nestingSection">
+          <h3>📦 Deep Nesting Issues</h3>
+          <div class="findings-grid" id="nestingList"></div>
+        </div>
+
+        <div class="findings-section" id="positioningSection">
+          <h3>🎯 Positioning Concerns</h3>
+          <div class="findings-grid" id="positioningList"></div>
+        </div>
+
+        <div class="findings-section" id="breakpointSection">
+          <h3>📱 Breakpoint Issues</h3>
+          <div class="findings-grid" id="breakpointList"></div>
+        </div>
+
+        <div class="findings-section" id="globalComboSection">
+          <h3>🔗 Global Class Combo Overload</h3>
+          <div class="findings-grid" id="globalComboList"></div>
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="card">
+        <h2>📤 Export</h2>
+        <div class="export-section">
+          <div class="export-actions">
+            <button class="btn btn-primary" id="copyJsonBtn">📋 Copy JSON</button>
+            <button class="btn btn-secondary" id="downloadJsonBtn">💾 Download Report</button>
+            <button class="btn btn-secondary" id="addMoreBtn">➕ Add More Pages</button>
+            <button class="btn btn-secondary" id="startOverBtn">🔄 Start Over</button>
+          </div>
+          <textarea class="export-output" id="exportOutput" readonly></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page Name Modal -->
+    <div id="pageNameModal" class="modal-overlay hidden">
+      <div class="modal">
+        <h3>Name this page</h3>
+        <p>Enter a name for this page (e.g., Homepage, About, Contact)</p>
+        <input type="text" id="pageNameInput" placeholder="Page name...">
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="cancelPageBtn">Cancel</button>
+          <button class="btn btn-primary" id="savePageBtn">Add Page</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Script Section -->
+    <div class="script-section">
+      <h3>📝 How to copy from Webflow</h3>
+      <p>Run this script in the browser console while in Webflow Designer, then copy any element:</p>
+      <div class="script-code">
+        <button class="copy-btn" id="copyScriptBtn">Copy</button>
+        <code>document.addEventListener('copy', ({ clipboardData }) => {
+  const webflowData = clipboardData.getData('application/json');
+  const type = 'text/plain';
+  const blob = new Blob([webflowData], { type });
+  const data = [new ClipboardItem({ [type]: blob })];
+  navigator.clipboard.write(data);
+  console.log('Copied! Paste into the viewer.');
+});</code>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ============================================================================
+// WEBFLOW PROJECT HEALTH ANALYZER v2.0
+// Professional analysis for retainer evaluation and maintainability assessment
+// ============================================================================
+
+// ========== CONFIGURATION ==========
+
+const FRAMEWORKS = {
+  'Client-First': {
+    required: ['page_', 'padding-global'],
+    patterns: ['page_', 'section_', 'padding-global', 'padding-section-', 'container-', 'margin-', 'text-size-', 'heading-style-', 'button_', 'spacer-', 'is-', 'text-color-', 'background-color-'],
+    minMatches: 6,
+    expectsMoreClasses: true,
+    expectsExplanatoryNames: true
+  },
+  'MAST': {
+    required: ['page-wrapper'],
+    patterns: ['page-wrapper', 'page-main', 'section', 'container', 'row', 'col-', 'slot', 'u-', 'cc-', 'is-', 'c-', 'l-'],
+    minMatches: 5,
+    expectsUtilityClasses: true
+  },
+  'Lumos': {
+    required: [],
+    patterns: ['l-section', 'l-container', 'l-grid', 'l-', 'lumos-', 'l-row', 'l-col'],
+    minMatches: 4
+  },
+  'Relume': {
+    required: [],
+    patterns: ['navbar_component', 'footer_component', 'section_', 'padding-vertical', 'layout_', 'rl_', 'button-group'],
+    minMatches: 4
+  }
+};
+
+const AUTO_GENERATED_PATTERNS = [
+  { pattern: /^div-block$/i, severity: 'medium', desc: 'Unnamed div' },
+  { pattern: /^div-block-\d+$/i, severity: 'high', desc: 'Numbered div' },
+  { pattern: /^section$/i, severity: 'low', desc: 'Generic section' },
+  { pattern: /^section-\d+$/i, severity: 'high', desc: 'Numbered section' },
+  { pattern: /^container$/i, severity: 'low', desc: 'Generic container' },
+  { pattern: /^container-\d+$/i, severity: 'high', desc: 'Numbered container' },
+  { pattern: /^heading$/i, severity: 'low', desc: 'Generic heading' },
+  { pattern: /^heading-\d+$/i, severity: 'high', desc: 'Numbered heading' },
+  { pattern: /^paragraph$/i, severity: 'low', desc: 'Generic paragraph' },
+  { pattern: /^paragraph-\d+$/i, severity: 'high', desc: 'Numbered paragraph' },
+  { pattern: /^text-block$/i, severity: 'medium', desc: 'Unnamed text block' },
+  { pattern: /^text-block-\d+$/i, severity: 'high', desc: 'Numbered text block' },
+  { pattern: /^link-block$/i, severity: 'medium', desc: 'Unnamed link block' },
+  { pattern: /^link-block-\d+$/i, severity: 'high', desc: 'Numbered link block' },
+  { pattern: /^image$/i, severity: 'low', desc: 'Generic image' },
+  { pattern: /^image-\d+$/i, severity: 'high', desc: 'Numbered image' },
+  { pattern: /^button$/i, severity: 'low', desc: 'Generic button' },
+  { pattern: /^button-\d+$/i, severity: 'high', desc: 'Numbered button' },
+  { pattern: /^grid$/i, severity: 'low', desc: 'Generic grid' },
+  { pattern: /^grid-\d+$/i, severity: 'high', desc: 'Numbered grid' },
+  { pattern: /^columns$/i, severity: 'low', desc: 'Generic columns' },
+  { pattern: /^columns-\d+$/i, severity: 'high', desc: 'Numbered columns' },
+  { pattern: /^column$/i, severity: 'low', desc: 'Generic column' },
+  { pattern: /^column-\d+$/i, severity: 'high', desc: 'Numbered column' },
+  { pattern: /^wrapper$/i, severity: 'low', desc: 'Generic wrapper' },
+  { pattern: /^wrapper-\d+$/i, severity: 'high', desc: 'Numbered wrapper' },
+  { pattern: /^block$/i, severity: 'medium', desc: 'Unnamed block' },
+  { pattern: /^block-\d+$/i, severity: 'high', desc: 'Numbered block' },
+  { pattern: /^.+-copy$/i, severity: 'critical', desc: 'Copied class' },
+  { pattern: /^.+-copy-\d+$/i, severity: 'critical', desc: 'Multiple copies' },
+  { pattern: /^copy-of-.+$/i, severity: 'critical', desc: 'Copy of class' },
+  { pattern: /^slider$/i, severity: 'low', desc: 'Generic slider' },
+  { pattern: /^slider-\d+$/i, severity: 'high', desc: 'Numbered slider' },
+  { pattern: /^slide$/i, severity: 'low', desc: 'Generic slide' },
+  { pattern: /^slide-\d+$/i, severity: 'high', desc: 'Numbered slide' },
+  { pattern: /^tabs$/i, severity: 'low', desc: 'Generic tabs' },
+  { pattern: /^tabs-\d+$/i, severity: 'high', desc: 'Numbered tabs' },
+  { pattern: /^tab-link$/i, severity: 'low', desc: 'Generic tab link' },
+  { pattern: /^tab-link-\d+$/i, severity: 'high', desc: 'Numbered tab link' },
+  { pattern: /^navbar$/i, severity: 'low', desc: 'Generic navbar' },
+  { pattern: /^navbar-\d+$/i, severity: 'high', desc: 'Numbered navbar' },
+  { pattern: /^dropdown$/i, severity: 'low', desc: 'Generic dropdown' },
+  { pattern: /^dropdown-\d+$/i, severity: 'high', desc: 'Numbered dropdown' },
+  { pattern: /^form-block$/i, severity: 'low', desc: 'Generic form' },
+  { pattern: /^form-block-\d+$/i, severity: 'high', desc: 'Numbered form' },
+  { pattern: /^text-field$/i, severity: 'low', desc: 'Generic text field' },
+  { pattern: /^text-field-\d+$/i, severity: 'high', desc: 'Numbered text field' },
+  { pattern: /^rich-text$/i, severity: 'low', desc: 'Generic rich text' },
+  { pattern: /^rich-text-\d+$/i, severity: 'high', desc: 'Numbered rich text' },
+  { pattern: /^html-embed$/i, severity: 'low', desc: 'Generic embed' },
+  { pattern: /^html-embed-\d+$/i, severity: 'high', desc: 'Numbered embed' },
+];
+
+const SPACING_SCALES = {
+  '4px': [0, 2, 4, 8, 12, 16, 20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256],
+  '8px': [0, 4, 8, 16, 24, 32, 40, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256],
+  '5px': [0, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 100, 120, 140, 160, 200]
+};
+
+// ========== STATE ==========
+
+let collectedPages = [];
+let pendingData = null;
+let analysisResult = null;
+let lastAnalyzedCount = 0;
+
+// ========== DOM ELEMENTS ==========
+
+const els = {};
+const elementIds = [
+  'pasteZone', 'errorMsg', 'collectedSection', 'pageCount', 'pagesList', 'analyzeBtn', 'clearAllBtn',
+  'resultsSection', 'scoreProgress', 'scoreValue', 'gradeBadge', 'complexityBadge', 'verdictText',
+  'frameworkBadge', 'intentionalityValue', 'intentionalityFill', 'metricsGrid', 'statsRow',
+  'briefCard', 'pagesAnalyzed', 'briefContent', 'priorityList', 'quickWinsList', 'riskGrid',
+  'breakdownCard', 'pageBreakdown', 'findingsCard', 'duplicateStylesList', 'nearDuplicateColorsList',
+  'inconsistentSpacingList', 'autoGeneratedList', 'nestingList', 'positioningList',
+  'breakpointList', 'globalComboList',
+  'exportOutput', 'copyJsonBtn', 'downloadJsonBtn', 'addMoreBtn', 'startOverBtn',
+  'addMorePanel', 'closeAddMoreBtn', 'refreshAnalysisBtn', 'inlinePagesList',
+  'pageNameModal', 'pageNameInput', 'cancelPageBtn', 'savePageBtn', 'copyScriptBtn',
+  'duplicateStylesSection', 'nearDuplicateColorsSection', 'inconsistentSpacingSection',
+  'autoGeneratedSection', 'nestingSection', 'positioningSection', 'breakpointSection', 
+  'globalComboSection', 'quickWins', 'riskSection'
+];
+elementIds.forEach(id => els[id] = document.getElementById(id));
+
+// ========== EVENT LISTENERS ==========
+
+document.addEventListener('paste', handlePaste);
+els.analyzeBtn?.addEventListener('click', analyzeAll);
+els.clearAllBtn?.addEventListener('click', clearAll);
+els.copyJsonBtn?.addEventListener('click', copyJson);
+els.downloadJsonBtn?.addEventListener('click', downloadJson);
+els.addMoreBtn?.addEventListener('click', showAddMorePanel);
+els.closeAddMoreBtn?.addEventListener('click', hideAddMorePanel);
+els.refreshAnalysisBtn?.addEventListener('click', () => { hideAddMorePanel(); analyzeAll(); });
+els.startOverBtn?.addEventListener('click', startOver);
+els.cancelPageBtn?.addEventListener('click', hideModal);
+els.savePageBtn?.addEventListener('click', savePage);
+els.pageNameInput?.addEventListener('keypress', e => { if (e.key === 'Enter') savePage(); });
+els.copyScriptBtn?.addEventListener('click', () => {
+  navigator.clipboard.writeText(document.querySelector('.script-code code').textContent);
+  els.copyScriptBtn.textContent = 'Copied!';
+  setTimeout(() => els.copyScriptBtn.textContent = 'Copy', 2000);
+});
+
+// ========== UTILITY FUNCTIONS ==========
+
+function showToast(msg, isError = false) {
+  const t = document.createElement('div');
+  t.className = `toast ${isError ? 'error' : ''}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function showError(msg) {
+  if (msg) { els.errorMsg.textContent = msg; els.errorMsg.classList.remove('hidden'); }
+  else els.errorMsg.classList.add('hidden');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ========== PAGE MANAGEMENT ==========
+
+function updateUI() {
+  const has = collectedPages.length > 0;
+  els.collectedSection.classList.toggle('hidden', !has);
+  els.pageCount.textContent = collectedPages.length;
+  els.pagesList.innerHTML = collectedPages.map((p, i) => `
+    <div class="page-chip">
+      <span class="page-chip-name">${escapeHtml(p.name)}</span>
+      <div class="page-chip-info">
+        <div class="page-chip-stats">
+          <span>${p.classCount} classes</span>
+          <span>${p.elementCount} elements</span>
+        </div>
+        <button class="page-chip-remove" onclick="removePage(${i})">&times;</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.removePage = i => { collectedPages.splice(i, 1); updateUI(); updateInlinePagesList(); };
+
+function clearAll() { 
+  collectedPages = []; 
+  lastAnalyzedCount = 0; 
+  updateUI(); 
+  showToast('Cleared all pages'); 
+}
+
+function startOver() { 
+  collectedPages = []; 
+  analysisResult = null; 
+  lastAnalyzedCount = 0; 
+  els.resultsSection.classList.add('hidden'); 
+  els.pasteZone.classList.remove('hidden'); 
+  els.addMorePanel.classList.add('hidden'); 
+  updateUI(); 
+}
+
+function showAddMorePanel() {
+  els.addMorePanel.classList.remove('hidden');
+  updateInlinePagesList();
+}
+
+function hideAddMorePanel() {
+  els.addMorePanel.classList.add('hidden');
+}
+
+function updateInlinePagesList() {
+  els.inlinePagesList.innerHTML = collectedPages.map((p, i) => {
+    const isNew = i >= lastAnalyzedCount;
+    return `<div class="inline-page-chip ${isNew ? 'new' : ''}">
+      <span>${escapeHtml(p.name)}</span>
+      <span class="count">${p.classCount}</span>
+      <button class="remove-btn" onclick="removePageInline(${i})">&times;</button>
+    </div>`;
+  }).join('');
+  els.refreshAnalysisBtn.disabled = collectedPages.length === lastAnalyzedCount;
+  els.refreshAnalysisBtn.textContent = collectedPages.length > lastAnalyzedCount 
+    ? `🔄 Refresh Analysis (+${collectedPages.length - lastAnalyzedCount} new)`
+    : '🔄 Refresh Analysis';
+}
+
+window.removePageInline = i => { collectedPages.splice(i, 1); updateInlinePagesList(); };
+
+function showModal() {
+  els.pageNameInput.value = `Page ${collectedPages.length + 1}`;
+  els.pageNameModal.classList.remove('hidden');
+  els.pageNameInput.focus();
+  els.pageNameInput.select();
+}
+
+function hideModal() {
+  els.pageNameModal.classList.add('hidden');
+  pendingData = null;
+}
+
+function handlePaste(e) {
+  const text = e.clipboardData.getData('text/plain') || e.clipboardData.getData('application/json');
+  if (!text) return;
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed.type === '@webflow/XscpData') {
+      showError('');
+      pendingData = parsed;
+      showModal();
+    } else {
+      showError('Valid JSON but not Webflow format. Expected type: @webflow/XscpData');
+    }
+  } catch (err) {
+    showError('Invalid JSON: ' + err.message);
+  }
+}
+
+function savePage() {
+  if (!pendingData) return;
+  const name = els.pageNameInput.value.trim() || `Page ${collectedPages.length + 1}`;
+  const { payload, meta } = pendingData;
+  const styles = payload?.styles || [];
+  const nodes = payload?.nodes || [];
+  const interactions = payload?.ix2?.interactions || [];
+
+  collectedPages.push({
+    name,
+    classCount: styles.length,
+    elementCount: nodes.length,
+    interactionCount: interactions.length,
+    styles,
+    nodes,
+    interactions,
+    meta: meta || {},
+    rawData: pendingData
+  });
+
+  hideModal();
+  updateUI();
+  if (!els.addMorePanel.classList.contains('hidden')) updateInlinePagesList();
+  showToast(`Added "${name}" with ${styles.length} classes`);
+}
+
+// ========== ANALYSIS ENGINE ==========
+
+function analyzeAll() {
+  if (!collectedPages.length) return;
+  
+  // Aggregate all data
+  const aggregated = aggregateData();
+  
+  // Run all analyses
+  const framework = detectFramework(aggregated.allClassNames);
+  const frameworkConfig = framework ? FRAMEWORKS[framework] : null;
+  
+  const naming = analyzeNaming(aggregated, frameworkConfig);
+  const styleConsistency = analyzeStyleConsistency(aggregated, frameworkConfig);
+  const typography = analyzeTypography(aggregated);
+  const architecture = analyzeArchitecture(aggregated, frameworkConfig);
+  const maintainability = analyzeMaintainability(aggregated, frameworkConfig);
+  const technical = analyzeTechnical(aggregated);
+  
+  // Calculate scores
+  const metrics = { naming, styleConsistency, typography, architecture, maintainability, technical };
+  let totalScore = 0;
+  Object.values(metrics).forEach(m => totalScore += m.score);
+  
+  // Calculate intentionality
+  const intentionality = calculateIntentionality(aggregated, metrics);
+  
+  // Determine complexity rating
+  const complexity = determineComplexity(totalScore, aggregated, metrics);
+  
+  // Generate findings
+  const findings = generateFindings(aggregated, metrics);
+  
+  // Generate recommendations
+  const recommendations = generateRecommendations(metrics, findings, framework);
+  
+  // Generate quick wins
+  const quickWins = generateQuickWins(metrics, findings);
+  
+  // Generate risk assessment
+  const riskAssessment = generateRiskAssessment(aggregated);
+  
+  // Generate brief
+  const brief = generateBrief(aggregated, metrics, framework, complexity, findings);
+  
+  analysisResult = {
+    score: totalScore,
+    grade: getGrade(totalScore),
+    complexity,
+    intentionality,
+    framework,
+    frameworkConfig,
+    metrics,
+    findings,
+    recommendations,
+    quickWins,
+    riskAssessment,
+    brief,
+    aggregated,
+    pages: collectedPages.map(p => ({ name: p.name, classCount: p.classCount, elementCount: p.elementCount }))
+  };
+  
+  lastAnalyzedCount = collectedPages.length;
+  displayResults();
+}
+
+function aggregateData() {
+  const styleMap = new Map();
+  const allNodes = [];
+  const allInteractions = [];
+  let totalElements = 0;
+  let unlinkedSymbols = 0;
+  
+  collectedPages.forEach((page, pageIndex) => {
+    totalElements += page.elementCount;
+    unlinkedSymbols += page.meta?.unlinkedSymbolCount || 0;
+    
+    page.styles.forEach(style => {
+      if (!styleMap.has(style._id)) {
+        styleMap.set(style._id, {
+          ...style,
+          usedOnPages: [page.name],
+          pageIndices: [pageIndex]
+        });
+      } else {
+        const existing = styleMap.get(style._id);
+        existing.usedOnPages.push(page.name);
+        existing.pageIndices.push(pageIndex);
+      }
+    });
+    
+    page.nodes.forEach(node => {
+      allNodes.push({ ...node, pageName: page.name, pageIndex });
+    });
+    
+    (page.interactions || []).forEach(ix => {
+      allInteractions.push({ ...ix, pageName: page.name });
+    });
+  });
+  
+  const allStyles = Array.from(styleMap.values());
+  const allClassNames = allStyles.map(s => s.name).filter(Boolean);
+  const allCss = allStyles.map(s => s.styleLess || '').join('; ');
+  
+  // Build node tree for nesting analysis
+  const nodeMap = {};
+  allNodes.forEach(n => nodeMap[n._id] = n);
+  
+  return {
+    allStyles,
+    allClassNames,
+    allCss,
+    allNodes,
+    nodeMap,
+    allInteractions,
+    totalElements,
+    unlinkedSymbols,
+    pageCount: collectedPages.length,
+    pages: collectedPages
+  };
+}
+
+// ========== FRAMEWORK DETECTION ==========
+
+function detectFramework(classNames) {
+  const lower = classNames.map(n => n.toLowerCase());
+  let bestMatch = null;
+  let bestScore = 0;
+  
+  for (const [name, config] of Object.entries(FRAMEWORKS)) {
+    const hasRequired = config.required.length === 0 || 
+      config.required.every(req => lower.some(cn => cn.includes(req.toLowerCase())));
+    
+    if (!hasRequired) continue;
+    
+    let matches = 0;
+    config.patterns.forEach(p => {
+      if (lower.some(cn => cn.includes(p.toLowerCase()))) matches++;
+    });
+    
+    if (matches >= config.minMatches && matches > bestScore) {
+      bestMatch = name;
+      bestScore = matches;
+    }
+  }
+  
+  return bestMatch;
+}
+
+// ========== NAMING ANALYSIS (20 pts) ==========
+
+function analyzeNaming(aggregated, frameworkConfig) {
+  const { allStyles, allClassNames } = aggregated;
+  const issues = [];
+  let score = 20;
+  
+  // 1. Auto-generated classes analysis
+  const autoGenerated = { low: [], medium: [], high: [], critical: [] };
+  
+  allClassNames.forEach(name => {
+    for (const { pattern, severity, desc } of AUTO_GENERATED_PATTERNS) {
+      if (pattern.test(name)) {
+        autoGenerated[severity].push({ name, desc });
+        break;
+      }
+    }
+  });
+  
+  const totalAuto = autoGenerated.low.length + autoGenerated.medium.length + 
+                    autoGenerated.high.length + autoGenerated.critical.length;
+  const autoRatio = totalAuto / (allClassNames.length || 1);
+  
+  // Deduct based on severity
+  if (autoGenerated.critical.length > 0) {
+    score -= Math.min(8, autoGenerated.critical.length * 2);
+    issues.push(`${autoGenerated.critical.length} copied classes (critical)`);
+  }
+  if (autoGenerated.high.length > 3) {
+    score -= Math.min(6, Math.floor(autoGenerated.high.length / 2));
+    issues.push(`${autoGenerated.high.length} numbered auto-classes`);
+  }
+  if (autoRatio > 0.3) {
+    score -= 4;
+    issues.push(`${Math.round(autoRatio * 100)}% auto-generated overall`);
+  } else if (autoRatio > 0.15) {
+    score -= 2;
+  }
+  
+  // 2. Check for duplicate CSS with different names
+  const cssToClasses = new Map();
+  allStyles.forEach(style => {
+    if (style.styleLess && style.styleLess.length > 10) {
+      const normalized = normalizeCss(style.styleLess);
+      if (!cssToClasses.has(normalized)) {
+        cssToClasses.set(normalized, []);
+      }
+      cssToClasses.get(normalized).push(style.name);
+    }
+  });
+  
+  const duplicateCss = Array.from(cssToClasses.entries())
+    .filter(([css, names]) => names.length > 1)
+    .map(([css, names]) => ({ css: css.substring(0, 100), names }));
+  
+  if (duplicateCss.length > 5) {
+    score -= 3;
+    issues.push(`${duplicateCss.length} groups of duplicate styles`);
+  } else if (duplicateCss.length > 2) {
+    score -= 1;
+  }
+  
+  // 3. Naming convention consistency
+  const conventions = detectNamingConventions(allClassNames);
+  if (conventions.mixed > 3) {
+    score -= 2;
+    issues.push('Mixed naming conventions detected');
+  }
+  
+  // 4. Check auto-generated with identical CSS (worst case)
+  const numberedWithSameCss = findNumberedWithSameCss(allStyles);
+  if (numberedWithSameCss.length > 0) {
+    score -= Math.min(4, numberedWithSameCss.length);
+    issues.push(`${numberedWithSameCss.length} numbered classes with identical CSS`);
+  }
+  
+  return {
+    score: Math.max(0, score),
+    max: 20,
+    detail: `${totalAuto} auto-generated, ${duplicateCss.length} duplicate styles`,
+    issues,
+    data: { autoGenerated, duplicateCss, conventions, numberedWithSameCss }
+  };
+}
+
+function normalizeCss(css) {
+  return css.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function detectNamingConventions(classNames) {
+  const conventions = {
+    kebab: 0,      // my-class-name
+    camel: 0,      // myClassName
+    snake: 0,      // my_class_name
+    bemmish: 0,    // block__element--modifier
+    prefixed: {},  // is-, cc-, u-, etc.
+    mixed: 0
+  };
+  
+  const prefixPattern = /^(is-|cc-|u-|c-|l-|js-|w-|has-)/i;
+  
+  classNames.forEach(name => {
+    if (prefixPattern.test(name)) {
+      const prefix = name.match(prefixPattern)[1].toLowerCase();
+      conventions.prefixed[prefix] = (conventions.prefixed[prefix] || 0) + 1;
+    }
+    if (name.includes('__') || name.includes('--')) conventions.bemmish++;
+    else if (name.includes('_')) conventions.snake++;
+    else if (/[a-z][A-Z]/.test(name)) conventions.camel++;
+    else if (name.includes('-')) conventions.kebab++;
+  });
+  
+  // Check for mixed conventions
+  const prefixTypes = Object.keys(conventions.prefixed);
+  if (prefixTypes.length > 2) {
+    conventions.mixed = prefixTypes.length;
+  }
+  
+  return conventions;
+}
+
+function findNumberedWithSameCss(styles) {
+  const numbered = styles.filter(s => /\d+$/.test(s.name));
+  const groups = [];
+  
+  numbered.forEach(style => {
+    const baseName = style.name.replace(/-?\d+$/, '');
+    const similar = numbered.filter(s => 
+      s._id !== style._id && 
+      s.name.replace(/-?\d+$/, '') === baseName &&
+      s.styleLess === style.styleLess
+    );
+    if (similar.length > 0 && !groups.some(g => g.includes(style.name))) {
+      groups.push([style.name, ...similar.map(s => s.name)]);
+    }
+  });
+  
+  return groups;
+}
+
+// ========== STYLE CONSISTENCY ANALYSIS (20 pts) ==========
+
+function analyzeStyleConsistency(aggregated, frameworkConfig) {
+  const { allStyles, allCss } = aggregated;
+  const issues = [];
+  let score = 20;
+  
+  // 1. Extract and analyze colors
+  const colors = extractColors(allStyles);
+  const nearDuplicateColors = findNearDuplicateColors(colors.hardcoded);
+  
+  if (nearDuplicateColors.length > 5) {
+    score -= 4;
+    issues.push(`${nearDuplicateColors.length} near-duplicate color pairs`);
+  } else if (nearDuplicateColors.length > 2) {
+    score -= 2;
+    issues.push(`${nearDuplicateColors.length} near-duplicate colors`);
+  }
+  
+  // Bonus for CSS variables
+  if (colors.variables.length > 10) score = Math.min(20, score + 2);
+  else if (colors.variables.length === 0 && colors.hardcoded.length > 10) {
+    score -= 2;
+    issues.push('No CSS variables used for colors');
+  }
+  
+  // 2. Analyze spacing consistency
+  const spacing = extractSpacing(allStyles);
+  const spacingAnalysis = analyzeSpacingPatterns(spacing);
+  
+  if (spacingAnalysis.offScaleRatio > 0.4) {
+    score -= 3;
+    issues.push(`${Math.round(spacingAnalysis.offScaleRatio * 100)}% spacing off-scale`);
+  } else if (spacingAnalysis.offScaleRatio > 0.2) {
+    score -= 1;
+  }
+  
+  // Check for suspicious near-duplicate spacing
+  if (spacingAnalysis.nearDuplicates.length > 3) {
+    score -= 2;
+    issues.push(`${spacingAnalysis.nearDuplicates.length} inconsistent spacing pairs`);
+  }
+  
+  // 3. Check spacing in root elements (more strict)
+  const rootSpacingIssues = analyzeRootSpacing(aggregated);
+  if (rootSpacingIssues.length > 0) {
+    score -= Math.min(3, rootSpacingIssues.length);
+    issues.push(`Inconsistent root-level spacing`);
+  }
+  
+  return {
+    score: Math.max(0, score),
+    max: 20,
+    detail: `${colors.hardcoded.length} colors, ${spacing.unique.length} spacing values`,
+    issues,
+    data: { colors, nearDuplicateColors, spacing, spacingAnalysis, rootSpacingIssues }
+  };
+}
+
+function extractColors(styles) {
+  const colorRe = /#[0-9a-fA-F]{3,8}|rgba?\s*\([^)]+\)|hsla?\s*\([^)]+\)/gi;
+  const varRe = /var\s*\(\s*--[^)]+\)/gi;
+  
+  const hardcoded = new Map();
+  const variables = new Set();
+  
+  styles.forEach(style => {
+    const css = style.styleLess || '';
+    (css.match(colorRe) || []).forEach(c => {
+      const normalized = c.toLowerCase().replace(/\s/g, '');
+      if (!hardcoded.has(normalized)) {
+        hardcoded.set(normalized, { value: normalized, classes: [], rgb: parseColor(normalized) });
+      }
+      hardcoded.get(normalized).classes.push(style.name);
+    });
+    (css.match(varRe) || []).forEach(v => variables.add(v));
+  });
+  
+  return {
+    hardcoded: Array.from(hardcoded.values()),
+    variables: Array.from(variables)
+  };
+}
+
+function parseColor(color) {
+  // Convert color to RGB for comparison
+  if (color.startsWith('#')) {
+    let hex = color.slice(1);
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const num = parseInt(hex.substring(0, 6), 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+  if (color.startsWith('rgb')) {
+    const match = color.match(/(\d+)/g);
+    if (match && match.length >= 3) {
+      return { r: parseInt(match[0]), g: parseInt(match[1]), b: parseInt(match[2]) };
+    }
+  }
+  return null;
+}
+
+function colorDistance(c1, c2) {
+  if (!c1 || !c2) return 999;
+  return Math.sqrt(
+    Math.pow(c1.r - c2.r, 2) +
+    Math.pow(c1.g - c2.g, 2) +
+    Math.pow(c1.b - c2.b, 2)
+  );
+}
+
+function findNearDuplicateColors(colors) {
+  const pairs = [];
+  const threshold = 15; // ~5% difference
+  
+  for (let i = 0; i < colors.length; i++) {
+    for (let j = i + 1; j < colors.length; j++) {
+      const dist = colorDistance(colors[i].rgb, colors[j].rgb);
+      if (dist > 0 && dist < threshold) {
+        // Check if class names suggest intentional difference
+        const intentional = checkIntentionalColorDiff(colors[i], colors[j]);
+        if (!intentional) {
+          pairs.push({
+            color1: colors[i],
+            color2: colors[j],
+            distance: dist,
+            percentage: Math.round((dist / 441) * 100) // 441 = max distance (white to black)
+          });
+        }
+      }
+    }
+  }
+  
+  return pairs;
+}
+
+function checkIntentionalColorDiff(c1, c2) {
+  // Check if class names suggest these are intentionally different
+  const names1 = c1.classes.join(' ').toLowerCase();
+  const names2 = c2.classes.join(' ').toLowerCase();
+  
+  // Intentional patterns: semantic pairs that SHOULD be different
+  const intentionalPairs = [
+    ['primary', 'secondary'],
+    ['hover', 'active'],
+    ['light', 'dark'],
+    ['muted', 'strong'],
+    ['subtle', 'bold'],
+    ['foreground', 'background'],
+    ['border', 'background'],
+    ['text', 'background']
+  ];
+  
+  for (const [a, b] of intentionalPairs) {
+    if ((names1.includes(a) && names2.includes(b)) || 
+        (names1.includes(b) && names2.includes(a))) {
+      return true; // Likely intentional contrast pair
+    }
+  }
+  
+  // If one is a hover/focus state, likely intentional
+  if ((names1.includes('hover') || names1.includes('focus') || names1.includes('active')) !==
+      (names2.includes('hover') || names2.includes('focus') || names2.includes('active'))) {
+    return true;
+  }
+  
+  // If class names are very different (not sharing common words), might be intentional
+  const words1 = names1.split(/[-_\s]/).filter(w => w.length > 2);
+  const words2 = names2.split(/[-_\s]/).filter(w => w.length > 2);
+  const sharedWords = words1.filter(w => words2.includes(w));
+  
+  if (sharedWords.length === 0 && words1.length > 0 && words2.length > 0) {
+    return true; // Completely different contexts, might be intentional
+  }
+  
+  // If both use similar semantic names but different colors, likely unintentional
+  const similarContexts = ['background', 'bg', 'text', 'color', 'border', 'fill'];
+  for (const ctx of similarContexts) {
+    if (names1.includes(ctx) && names2.includes(ctx)) {
+      return false; // Same context, near-duplicate = unintentional
+    }
+  }
+  
+  return false; // Conservative - flag for review
+}
+
+function extractSpacing(styles) {
+  const spacingRe = /(?:padding|margin|gap)(?:-(?:top|bottom|left|right|inline|block))?:\s*(-?\d+(?:\.\d+)?)(px|rem|em|%)/gi;
+  const values = new Map();
+  
+  styles.forEach(style => {
+    const css = style.styleLess || '';
+    let match;
+    while ((match = spacingRe.exec(css)) !== null) {
+      const value = parseFloat(match[1]);
+      const unit = match[2];
+      const property = match[0].split(':')[0].trim();
+      
+      // Convert to px for comparison (assuming 16px base)
+      let pxValue = value;
+      if (unit === 'rem') pxValue = value * 16;
+      if (unit === 'em') pxValue = value * 16;
+      
+      const key = `${pxValue}px`;
+      if (!values.has(key)) {
+        values.set(key, { value: pxValue, original: `${value}${unit}`, classes: [], properties: [] });
+      }
+      values.get(key).classes.push(style.name);
+      values.get(key).properties.push(property);
+    }
+  });
+  
+  return {
+    all: Array.from(values.values()),
+    unique: Array.from(values.keys()).map(k => values.get(k).value).sort((a, b) => a - b)
+  };
+}
+
+function analyzeSpacingPatterns(spacing) {
+  const { unique, all } = spacing;
+  
+  // Find best matching scale
+  let bestScale = null;
+  let bestOnScale = 0;
+  
+  for (const [name, scale] of Object.entries(SPACING_SCALES)) {
+    const onScale = unique.filter(v => scale.includes(Math.round(v))).length;
+    if (onScale > bestOnScale) {
+      bestOnScale = onScale;
+      bestScale = name;
+    }
+  }
+  
+  const offScaleValues = unique.filter(v => 
+    !Object.values(SPACING_SCALES).some(scale => scale.includes(Math.round(v)))
+  );
+  
+  // Find near-duplicate spacing (e.g., 15px and 16px)
+  const nearDuplicates = [];
+  for (let i = 0; i < unique.length; i++) {
+    for (let j = i + 1; j < unique.length; j++) {
+      const diff = Math.abs(unique[i] - unique[j]);
+      if (diff > 0 && diff <= 2 && unique[i] > 10) { // Only flag for larger values
+        nearDuplicates.push({ v1: unique[i], v2: unique[j], diff });
+      }
+    }
+  }
+  
+  return {
+    bestScale,
+    onScaleRatio: bestOnScale / (unique.length || 1),
+    offScaleRatio: offScaleValues.length / (unique.length || 1),
+    offScaleValues,
+    nearDuplicates
+  };
+}
+
+function analyzeRootSpacing(aggregated) {
+  // Find root-level elements (sections, containers) and check spacing consistency
+  const { allNodes, allStyles } = aggregated;
+  const issues = [];
+  
+  // Get styles used on section/container type elements
+  const rootTypes = ['Section', 'Container'];
+  const rootClasses = new Set();
+  
+  allNodes.forEach(node => {
+    if (rootTypes.includes(node.type)) {
+      (node.classes || []).forEach(c => rootClasses.add(c));
+    }
+  });
+  
+  // Compare padding/margin across these root classes
+  const rootStyles = allStyles.filter(s => rootClasses.has(s._id));
+  const rootSpacing = {};
+  
+  rootStyles.forEach(style => {
+    const css = style.styleLess || '';
+    const paddingMatch = css.match(/padding(?:-[a-z]+)?:\s*(\d+)/);
+    if (paddingMatch) {
+      const val = parseInt(paddingMatch[1]);
+      if (!rootSpacing[style.name]) rootSpacing[style.name] = [];
+      rootSpacing[style.name].push(val);
+    }
+  });
+  
+  // Check for inconsistencies in root padding
+  const rootPaddings = Object.values(rootSpacing).flat();
+  const uniqueRootPaddings = [...new Set(rootPaddings)];
+  
+  if (uniqueRootPaddings.length > 3) {
+    issues.push({ type: 'inconsistent', values: uniqueRootPaddings });
+  }
+  
+  return issues;
+}
+
+// ========== TYPOGRAPHY ANALYSIS (10 pts) ==========
+
+function analyzeTypography(aggregated) {
+  const { allStyles } = aggregated;
+  const issues = [];
+  let score = 10;
+  
+  const typography = extractTypography(allStyles);
+  
+  // Font families
+  if (typography.families.size > 4) {
+    score -= 3;
+    issues.push(`${typography.families.size} different font families`);
+  } else if (typography.families.size > 3) {
+    score -= 1;
+  }
+  
+  // Font sizes - look for clustering issues
+  const sizeAnalysis = analyzeFontSizes(typography.sizes);
+  
+  if (sizeAnalysis.nearDuplicates.length > 3) {
+    score -= 2;
+    issues.push(`${sizeAnalysis.nearDuplicates.length} near-duplicate font sizes`);
+  }
+  
+  if (typography.sizes.length > 12) {
+    score -= 2;
+    issues.push(`${typography.sizes.length} different font sizes`);
+  } else if (typography.sizes.length > 8) {
+    score -= 1;
+  }
+  
+  // Check for type scale
+  if (!sizeAnalysis.hasTypeScale && typography.sizes.length > 4) {
+    score -= 1;
+    issues.push('No consistent type scale detected');
+  }
+  
+  // Line height consistency
+  if (typography.lineHeights.length > 6) {
+    score -= 1;
+    issues.push(`${typography.lineHeights.length} different line heights`);
+  }
+  
+  return {
+    score: Math.max(0, score),
+    max: 10,
+    detail: `${typography.families.size} fonts, ${typography.sizes.length} sizes`,
+    issues,
+    data: { typography, sizeAnalysis }
+  };
+}
+
+function extractTypography(styles) {
+  const families = new Set();
+  const sizes = [];
+  const weights = new Set();
+  const lineHeights = [];
+  
+  styles.forEach(style => {
+    const css = style.styleLess || '';
+    
+    const famMatch = css.match(/font-family:\s*([^;]+)/i);
+    if (famMatch) families.add(famMatch[1].trim().toLowerCase());
+    
+    const sizeMatch = css.match(/font-size:\s*(\d+(?:\.\d+)?)(px|rem|em)/i);
+    if (sizeMatch) {
+      let px = parseFloat(sizeMatch[1]);
+      if (sizeMatch[2] === 'rem') px *= 16;
+      sizes.push({ value: px, class: style.name });
+    }
+    
+    const weightMatch = css.match(/font-weight:\s*(\d+|normal|bold)/i);
+    if (weightMatch) weights.add(weightMatch[1]);
+    
+    const lhMatch = css.match(/line-height:\s*(\d+(?:\.\d+)?)/i);
+    if (lhMatch) lineHeights.push(parseFloat(lhMatch[1]));
+  });
+  
+  return { families, sizes, weights, lineHeights: [...new Set(lineHeights)] };
+}
+
+function analyzeFontSizes(sizes) {
+  const unique = [...new Set(sizes.map(s => s.value))].sort((a, b) => a - b);
+  
+  // Find near-duplicate sizes
+  const nearDuplicates = [];
+  for (let i = 0; i < unique.length - 1; i++) {
+    const diff = unique[i + 1] - unique[i];
+    if (diff <= 2 && unique[i] >= 12) {
+      nearDuplicates.push({ v1: unique[i], v2: unique[i + 1], diff });
+    }
+  }
+  
+  // Check for type scale (consistent ratio)
+  let hasTypeScale = false;
+  if (unique.length >= 4) {
+    const ratios = [];
+    for (let i = 0; i < unique.length - 1; i++) {
+      ratios.push(unique[i + 1] / unique[i]);
+    }
+    const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    const consistent = ratios.every(r => Math.abs(r - avgRatio) < 0.15);
+    hasTypeScale = consistent && avgRatio >= 1.1 && avgRatio <= 1.5;
+  }
+  
+  return { unique, nearDuplicates, hasTypeScale };
+}
+
+// ========== ARCHITECTURE ANALYSIS (20 pts) ==========
+
+function analyzeArchitecture(aggregated, frameworkConfig) {
+  const { allNodes, allStyles, pageCount, pages, nodeMap } = aggregated;
+  const issues = [];
+  let score = 20;
+  
+  // 1. Nesting depth analysis
+  const nestingAnalysis = analyzeNestingDepth(allNodes, nodeMap);
+  
+  if (nestingAnalysis.maxDepth > 10) {
+    score -= 4;
+    issues.push(`Max nesting depth: ${nestingAnalysis.maxDepth} levels`);
+  } else if (nestingAnalysis.maxDepth > 8) {
+    score -= 2;
+    issues.push(`Deep nesting: ${nestingAnalysis.maxDepth} levels`);
+  }
+  
+  if (nestingAnalysis.emptyWrappers > 5) {
+    score -= 2;
+    issues.push(`${nestingAnalysis.emptyWrappers} empty wrapper divs`);
+  }
+  
+  // 2. Component/Symbol usage
+  const { unlinkedSymbols } = aggregated;
+  if (unlinkedSymbols > 5) {
+    score -= 3;
+    issues.push(`${unlinkedSymbols} unlinked symbols (tech debt)`);
+  } else if (unlinkedSymbols > 2) {
+    score -= 1;
+  }
+  
+  // 3. Structure consistency across pages
+  if (pageCount > 1) {
+    const structureConsistency = analyzeStructureConsistency(pages);
+    if (structureConsistency.score < 0.5) {
+      score -= 3;
+      issues.push('Inconsistent page structure');
+    } else if (structureConsistency.score < 0.7) {
+      score -= 1;
+    }
+  }
+  
+  // 4. Root element patterns
+  const rootPatterns = analyzeRootPatterns(allNodes, nodeMap);
+  if (rootPatterns.inconsistent) {
+    score -= 2;
+    issues.push('Inconsistent root-level structure');
+  }
+  
+  // 5. CMS indicators
+  const cmsAnalysis = analyzeCmsUsage(allNodes, allStyles);
+  if (cmsAnalysis.hasCms) {
+    // Not a penalty, but note it
+  }
+  
+  return {
+    score: Math.max(0, score),
+    max: 20,
+    detail: `Max depth: ${nestingAnalysis.maxDepth}, ${unlinkedSymbols} unlinked symbols`,
+    issues,
+    data: { nestingAnalysis, unlinkedSymbols, rootPatterns, cmsAnalysis }
+  };
+}
+
+function analyzeNestingDepth(nodes, nodeMap) {
+  let maxDepth = 0;
+  let deepNodes = [];
+  let emptyWrappers = 0;
+  
+  function getDepth(nodeId, current = 0) {
+    const node = nodeMap[nodeId];
+    if (!node) return current;
+    
+    if (current > maxDepth) {
+      maxDepth = current;
+    }
+    
+    // Check for empty wrapper (div-block with single child)
+    if (node.type === 'Block' && 
+        (!node.classes || node.classes.length === 0) && 
+        node.children?.length === 1) {
+      emptyWrappers++;
+    }
+    
+    if (node.children) {
+      node.children.forEach(childId => {
+        getDepth(childId, current + 1);
+      });
+    }
+    
+    return current;
+  }
+  
+  // Find root nodes and traverse
+  const childIds = new Set();
+  nodes.forEach(n => (n.children || []).forEach(c => childIds.add(c)));
+  const rootNodes = nodes.filter(n => !childIds.has(n._id));
+  
+  rootNodes.forEach(root => getDepth(root._id, 0));
+  
+  return { maxDepth, deepNodes, emptyWrappers };
+}
+
+function analyzeStructureConsistency(pages) {
+  if (pages.length < 2) return { score: 1, details: [] };
+  
+  // Compare root class patterns across pages
+  const pagePatterns = pages.map(page => {
+    const roots = page.nodes.filter(n => 
+      n.type === 'Section' || n.type === 'Container'
+    );
+    return {
+      name: page.name,
+      rootTypes: roots.map(r => r.type),
+      rootClassCount: roots.reduce((sum, r) => sum + (r.classes?.length || 0), 0)
+    };
+  });
+  
+  // Simple consistency score based on similar root counts
+  const avgRootCount = pagePatterns.reduce((sum, p) => sum + p.rootClassCount, 0) / pagePatterns.length;
+  const variance = pagePatterns.reduce((sum, p) => sum + Math.pow(p.rootClassCount - avgRootCount, 2), 0) / pagePatterns.length;
+  const consistency = 1 / (1 + variance / 100);
+  
+  return { score: consistency, details: pagePatterns };
+}
+
+function analyzeRootPatterns(nodes, nodeMap) {
+  const rootTypes = ['Section', 'Container'];
+  const patterns = new Map();
+  
+  nodes.forEach(node => {
+    if (rootTypes.includes(node.type)) {
+      const pattern = (node.classes || []).sort().join(',');
+      if (!patterns.has(pattern)) patterns.set(pattern, 0);
+      patterns.set(pattern, patterns.get(pattern) + 1);
+    }
+  });
+  
+  // If there are too many unique patterns relative to total, it's inconsistent
+  const uniquePatterns = patterns.size;
+  const totalRoots = Array.from(patterns.values()).reduce((a, b) => a + b, 0);
+  const inconsistent = uniquePatterns > totalRoots * 0.6 && totalRoots > 5;
+  
+  return { patterns: Array.from(patterns.entries()), inconsistent };
+}
+
+function analyzeCmsUsage(nodes, styles) {
+  const cmsIndicators = ['Collection', 'CollectionList', 'DynamicWrapper'];
+  const hasCms = nodes.some(n => cmsIndicators.includes(n.type));
+  
+  const cmsClasses = styles.filter(s => 
+    s.name.includes('collection') || 
+    s.name.includes('cms-') ||
+    s.name.includes('dynamic')
+  );
+  
+  return { hasCms, cmsClasses };
+}
+
+// ========== MAINTAINABILITY ANALYSIS (15 pts) ==========
+
+function analyzeMaintainability(aggregated, frameworkConfig) {
+  const { allStyles, allClassNames, pageCount, pages } = aggregated;
+  const issues = [];
+  let score = 15;
+  
+  // 1. Class reuse patterns
+  const reuseAnalysis = analyzeClassReuse(allStyles, pageCount);
+  
+  if (pageCount > 1) {
+    if (reuseAnalysis.orphanRatio > 0.6) {
+      score -= 3;
+      issues.push(`${Math.round(reuseAnalysis.orphanRatio * 100)}% classes used on single page only`);
+    } else if (reuseAnalysis.orphanRatio > 0.4) {
+      score -= 1;
+    }
+  }
+  
+  // 2. Combo class strategy
+  const comboAnalysis = analyzeComboClasses(allStyles, frameworkConfig);
+  
+  if (comboAnalysis.issues.length > 0) {
+    score -= Math.min(3, comboAnalysis.issues.length);
+    issues.push(...comboAnalysis.issues.slice(0, 2));
+  }
+  
+  // 3. Empty/orphan classes
+  const emptyClasses = allStyles.filter(s => !s.styleLess || s.styleLess.trim().length === 0);
+  const jsHooks = emptyClasses.filter(s => s.name.startsWith('js-') || s.name.startsWith('w-'));
+  const trueEmpty = emptyClasses.length - jsHooks.length;
+  
+  if (trueEmpty > 10) {
+    score -= 2;
+    issues.push(`${trueEmpty} empty classes (not JS hooks)`);
+  }
+  
+  // 4. Global class risk
+  const globalRisk = assessGlobalClassRisk(allStyles, aggregated.allNodes);
+  if (globalRisk.highRisk.length > 10) {
+    score -= 2;
+    issues.push(`${globalRisk.highRisk.length} high-impact global classes`);
+  }
+  
+  // 5. Semantic naming misuse (Client-First specific)
+  if (frameworkConfig?.expectsExplanatoryNames) {
+    const misuse = detectSemanticMisuse(allStyles, pages);
+    if (misuse.length > 0) {
+      score -= Math.min(3, misuse.length);
+      issues.push(`${misuse.length} semantic classes used on wrong pages`);
+    }
+  }
+  
+  return {
+    score: Math.max(0, score),
+    max: 15,
+    detail: `${Math.round((1 - reuseAnalysis.orphanRatio) * 100)}% reuse, ${comboAnalysis.comboCount} combos`,
+    issues,
+    data: { reuseAnalysis, comboAnalysis, emptyClasses: trueEmpty, globalRisk }
+  };
+}
+
+function analyzeClassReuse(styles, pageCount) {
+  if (pageCount <= 1) return { orphanRatio: 0, sharedCount: 0 };
+  
+  const orphans = styles.filter(s => s.usedOnPages?.length === 1);
+  const shared = styles.filter(s => s.usedOnPages?.length > 1);
+  
+  return {
+    orphanRatio: orphans.length / (styles.length || 1),
+    sharedCount: shared.length,
+    orphans: orphans.map(s => s.name)
+  };
+}
+
+function analyzeComboClasses(styles, frameworkConfig) {
+  const issues = [];
+  const combos = styles.filter(s => s.comb === '&');
+  const comboRatio = combos.length / (styles.length || 1);
+  
+  // Check for excessive combos (unless Client-First which expects more)
+  if (!frameworkConfig?.expectsExplanatoryNames) {
+    if (comboRatio > 0.6) {
+      issues.push('Excessive combo class usage (>60%)');
+    }
+  }
+  
+  // Check for no combos when expected
+  if (frameworkConfig?.expectsUtilityClasses && combos.length < 5 && styles.length > 30) {
+    issues.push('Few combo/utility classes for MAST-style framework');
+  }
+  
+  // Check for missing button variants with components
+  const buttonBase = styles.find(s => s.name.toLowerCase() === 'button' || s.name.includes('btn'));
+  if (buttonBase) {
+    const buttonVariants = combos.filter(c => 
+      c.name.toLowerCase().includes('button') || c.name.includes('btn')
+    );
+    if (buttonVariants.length === 0) {
+      issues.push('Button found but no button variants/combos');
+    }
+  }
+  
+  // NEW: Check for excessive combos on global/generic classes
+  const globalClassNames = ['section', 'container', 'wrapper', 'row', 'column', 'grid', 'block'];
+  const combosByBase = new Map();
+  
+  combos.forEach(combo => {
+    // Find what base class this combo extends
+    // In Webflow, combo classes reference their base via the hierarchy
+    const nameLower = combo.name.toLowerCase();
+    for (const global of globalClassNames) {
+      if (nameLower.includes(global) || nameLower.startsWith(global)) {
+        if (!combosByBase.has(global)) combosByBase.set(global, []);
+        combosByBase.get(global).push(combo.name);
+      }
+    }
+  });
+  
+  // Also check base classes that have many combos applied to them
+  const baseClasses = styles.filter(s => s.comb !== '&');
+  const globalBases = baseClasses.filter(s => 
+    globalClassNames.includes(s.name.toLowerCase())
+  );
+  
+  const globalComboWarnings = [];
+  globalBases.forEach(base => {
+    // Count combos that might be modifying this base
+    const relatedCombos = combos.filter(c => {
+      const cName = c.name.toLowerCase();
+      const bName = base.name.toLowerCase();
+      return cName.includes(bName) || cName.startsWith(bName);
+    });
+    
+    if (relatedCombos.length > 8) {
+      globalComboWarnings.push({
+        base: base.name,
+        comboCount: relatedCombos.length,
+        combos: relatedCombos.map(c => c.name)
+      });
+      issues.push(`${base.name} has ${relatedCombos.length} combo variations - consider componentizing`);
+    }
+  });
+  
+  return { comboCount: combos.length, comboRatio, issues, globalComboWarnings };
+}
+
+function assessGlobalClassRisk(styles, nodes) {
+  const classUsage = new Map();
+  
+  nodes.forEach(node => {
+    (node.classes || []).forEach(classId => {
+      if (!classUsage.has(classId)) classUsage.set(classId, 0);
+      classUsage.set(classId, classUsage.get(classId) + 1);
+    });
+  });
+  
+  const highRisk = [];
+  const globalNames = ['section', 'container', 'wrapper', 'button', 'heading', 'text', 'image', 'link'];
+  
+  styles.forEach(style => {
+    const usage = classUsage.get(style._id) || 0;
+    const isGlobalName = globalNames.some(g => style.name.toLowerCase() === g);
+    
+    if (usage > 20 || (isGlobalName && usage > 5)) {
+      highRisk.push({
+        name: style.name,
+        usage,
+        reason: isGlobalName ? 'Global name, high usage' : 'Very high usage'
+      });
+    }
+  });
+  
+  return { highRisk: highRisk.sort((a, b) => b.usage - a.usage) };
+}
+
+function detectSemanticMisuse(styles, pages) {
+  const misuse = [];
+  const pageSpecificPatterns = /-(home|about|contact|services|blog|pricing|faq|team|portfolio|industry)/i;
+  
+  styles.forEach(style => {
+    const match = style.name.match(pageSpecificPatterns);
+    if (match && style.usedOnPages?.length > 1) {
+      const expectedPage = match[1].toLowerCase();
+      const wrongPages = style.usedOnPages.filter(p => 
+        !p.toLowerCase().includes(expectedPage)
+      );
+      if (wrongPages.length > 0) {
+        misuse.push({
+          class: style.name,
+          expectedPage,
+          foundOn: wrongPages
+        });
+      }
+    }
+  });
+  
+  return misuse;
+}
+
+// ========== TECHNICAL PATTERNS ANALYSIS (15 pts) ==========
+
+function analyzeTechnical(aggregated) {
+  const { allStyles, allNodes, allInteractions } = aggregated;
+  const issues = [];
+  let score = 15;
+  
+  // 1. Breakpoint consistency
+  const breakpointAnalysis = analyzeBreakpoints(allStyles);
+  if (breakpointAnalysis.inconsistentCount > 10) {
+    score -= 3;
+    issues.push(`${breakpointAnalysis.inconsistentCount} breakpoint inconsistencies`);
+  } else if (breakpointAnalysis.inconsistentCount > 5) {
+    score -= 1;
+  }
+  
+  // Bonus for consistent responsive ratio
+  if (breakpointAnalysis.hasConsistentRatio) {
+    score = Math.min(15, score + 1);
+  }
+  
+  // Flag specific breakpoint issues
+  if (breakpointAnalysis.breakpointIssues.length > 0) {
+    const mobileIssues = breakpointAnalysis.breakpointIssues.filter(i => 
+      i.issue.includes('Mobile')
+    );
+    if (mobileIssues.length > 3) {
+      issues.push(`${mobileIssues.length} mobile spacing issues`);
+    }
+  }
+  
+  // 2. Position/overflow patterns
+  const positionAnalysis = analyzePositioning(allStyles);
+  
+  if (positionAnalysis.absoluteCount > 15) {
+    score -= 2;
+    issues.push(`Excessive absolute positioning (${positionAnalysis.absoluteCount})`);
+  }
+  
+  if (positionAnalysis.zIndexChaos) {
+    score -= 2;
+    issues.push('Z-index chaos detected');
+  }
+  
+  if (positionAnalysis.overflowHiddenCount > 10) {
+    score -= 1;
+    issues.push(`Many overflow:hidden (${positionAnalysis.overflowHiddenCount})`);
+  }
+  
+  // 3. State class consistency
+  const stateAnalysis = analyzeStateClasses(allStyles);
+  if (stateAnalysis.inconsistent) {
+    score -= 1;
+    issues.push('Inconsistent state class naming');
+  }
+  
+  // 4. Interaction complexity
+  if (allInteractions.length > 20) {
+    issues.push(`${allInteractions.length} interactions (high maintenance)`);
+  }
+  
+  // Check for interaction reuse
+  const uniqueInteractions = new Set(allInteractions.map(i => i.name || i._id));
+  if (allInteractions.length > 10 && uniqueInteractions.size === allInteractions.length) {
+    score -= 1;
+    issues.push('No interaction reuse detected');
+  }
+  
+  return {
+    score: Math.max(0, score),
+    max: 15,
+    detail: `${positionAnalysis.absoluteCount} absolute, ${allInteractions.length} interactions`,
+    issues,
+    data: { breakpointAnalysis, positionAnalysis, stateAnalysis, interactionCount: allInteractions.length }
+  };
+}
+
+function analyzeBreakpoints(styles) {
+  let inconsistentCount = 0;
+  const breakpointPatterns = {};
+  const breakpointIssues = [];
+  
+  // Track spacing progressions across breakpoints
+  const spacingProgressions = [];
+  
+  styles.forEach(style => {
+    if (style.variants) {
+      const variantKeys = Object.keys(style.variants);
+      variantKeys.forEach(vk => {
+        if (!breakpointPatterns[vk]) breakpointPatterns[vk] = 0;
+        breakpointPatterns[vk]++;
+        
+        // Check for inconsistent values at breakpoints
+        const baseCss = style.styleLess || '';
+        const variantCss = style.variants[vk].styleLess || '';
+        
+        // Extract all padding/margin values
+        const baseSpacing = extractSpacingValues(baseCss);
+        const variantSpacing = extractSpacingValues(variantCss);
+        
+        // Check if variant follows expected pattern (smaller on smaller screens)
+        const isSmallBreakpoint = vk.includes('small') || vk.includes('tiny') || vk.includes('mobile');
+        const isMediumBreakpoint = vk.includes('medium') || vk.includes('tablet');
+        
+        if (baseSpacing.length > 0 && variantSpacing.length > 0) {
+          const baseMax = Math.max(...baseSpacing);
+          const variantMax = Math.max(...variantSpacing);
+          
+          // For small breakpoints, spacing should generally decrease or stay same
+          if (isSmallBreakpoint && variantMax > baseMax * 1.2) {
+            inconsistentCount++;
+            breakpointIssues.push({
+              class: style.name,
+              issue: 'Mobile spacing larger than desktop',
+              base: baseMax,
+              variant: variantMax,
+              breakpoint: vk
+            });
+          }
+          
+          // Track progressions for pattern analysis
+          spacingProgressions.push({
+            class: style.name,
+            base: baseMax,
+            variant: variantMax,
+            breakpoint: vk,
+            ratio: variantMax / baseMax
+          });
+        }
+        
+        // Check for non-scale values at breakpoints
+        for (const val of variantSpacing) {
+          const isOnScale = Object.values(SPACING_SCALES).some(scale => 
+            scale.includes(Math.round(val))
+          );
+          if (!isOnScale && val > 0 && val !== Math.round(val)) {
+            // Odd values like 47px, 31px suggest manual adjustments
+            inconsistentCount++;
+            breakpointIssues.push({
+              class: style.name,
+              issue: `Off-scale value ${val}px at ${vk}`,
+              value: val,
+              breakpoint: vk
+            });
+          }
+        }
+      });
+    }
+  });
+  
+  // Analyze if there's a consistent responsive ratio
+  let hasConsistentRatio = false;
+  if (spacingProgressions.length >= 3) {
+    const ratios = spacingProgressions
+      .filter(p => p.ratio > 0 && p.ratio < 2)
+      .map(p => p.ratio);
+    
+    if (ratios.length >= 3) {
+      const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+      const consistent = ratios.filter(r => Math.abs(r - avgRatio) < 0.2).length;
+      hasConsistentRatio = consistent / ratios.length > 0.6;
+    }
+  }
+  
+  return { 
+    breakpointPatterns, 
+    inconsistentCount, 
+    breakpointIssues: breakpointIssues.slice(0, 10),
+    hasConsistentRatio,
+    spacingProgressions
+  };
+}
+
+function extractSpacingValues(css) {
+  const values = [];
+  const re = /(?:padding|margin|gap)(?:-[a-z]+)?:\s*(-?\d+(?:\.\d+)?)/gi;
+  let match;
+  while ((match = re.exec(css)) !== null) {
+    values.push(parseFloat(match[1]));
+  }
+  return values;
+}
+
+function analyzePositioning(styles) {
+  let absoluteCount = 0;
+  let fixedCount = 0;
+  let overflowHiddenCount = 0;
+  const zIndexValues = [];
+  
+  styles.forEach(style => {
+    const css = style.styleLess || '';
+    
+    if (css.includes('position: absolute') || css.includes('position:absolute')) {
+      absoluteCount++;
+    }
+    if (css.includes('position: fixed') || css.includes('position:fixed')) {
+      fixedCount++;
+    }
+    if (css.includes('overflow: hidden') || css.includes('overflow:hidden')) {
+      overflowHiddenCount++;
+    }
+    
+    const zMatch = css.match(/z-index:\s*(\d+)/);
+    if (zMatch) zIndexValues.push(parseInt(zMatch[1]));
+  });
+  
+  // Z-index chaos: extreme values or too many unique values
+  const uniqueZ = [...new Set(zIndexValues)].sort((a, b) => a - b);
+  const zIndexChaos = uniqueZ.some(z => z > 100) || uniqueZ.length > 8;
+  
+  return { absoluteCount, fixedCount, overflowHiddenCount, zIndexValues: uniqueZ, zIndexChaos };
+}
+
+function analyzeStateClasses(styles) {
+  const statePatterns = {
+    'is-': [],
+    'has-': [],
+    'active': [],
+    'hover': [],
+    'current': [],
+    'open': [],
+    'closed': []
+  };
+  
+  styles.forEach(style => {
+    const name = style.name.toLowerCase();
+    for (const pattern of Object.keys(statePatterns)) {
+      if (name.includes(pattern)) {
+        statePatterns[pattern].push(style.name);
+        break;
+      }
+    }
+  });
+  
+  // Check if multiple patterns are used
+  const usedPatterns = Object.entries(statePatterns).filter(([k, v]) => v.length > 0);
+  const inconsistent = usedPatterns.length > 3;
+  
+  return { statePatterns, inconsistent, usedPatterns };
+}
+
+// ========== SCORING HELPERS ==========
+
+function calculateIntentionality(aggregated, metrics) {
+  let intentional = 0;
+  let unintentional = 0;
+  
+  // Intentional signals
+  const { allStyles } = aggregated;
+  const hasVariables = metrics.styleConsistency.data.colors.variables.length > 5;
+  const hasConsistentNaming = metrics.naming.data.conventions.mixed < 2;
+  const hasGoodSpacing = metrics.styleConsistency.data.spacingAnalysis.onScaleRatio > 0.7;
+  const hasFramework = aggregated.framework !== null;
+  const hasComponents = aggregated.unlinkedSymbols < 3;
+  const hasLowNesting = metrics.architecture.data.nestingAnalysis.maxDepth < 8;
+  
+  if (hasVariables) intentional += 15;
+  if (hasConsistentNaming) intentional += 20;
+  if (hasGoodSpacing) intentional += 15;
+  if (hasFramework) intentional += 15;
+  if (hasComponents) intentional += 10;
+  if (hasLowNesting) intentional += 10;
+  
+  // Unintentional signals
+  const autoGenRatio = Object.values(metrics.naming.data.autoGenerated).flat().length / allStyles.length;
+  const nearDupColors = metrics.styleConsistency.data.nearDuplicateColors.length;
+  const nearDupSpacing = metrics.styleConsistency.data.spacingAnalysis.nearDuplicates.length;
+  const duplicateStyles = metrics.naming.data.duplicateCss.length;
+  
+  unintentional += autoGenRatio * 30;
+  unintentional += Math.min(nearDupColors * 3, 15);
+  unintentional += Math.min(nearDupSpacing * 3, 10);
+  unintentional += Math.min(duplicateStyles * 2, 10);
+  
+  const total = intentional + unintentional;
+  const score = total > 0 ? Math.round((intentional / total) * 100) : 50;
+  
+  return Math.min(100, Math.max(0, score));
+}
+
+function determineComplexity(score, aggregated, metrics) {
+  if (score >= 80) return { level: 'Easy', color: '#22c55e', desc: 'Project is well-organized and ready for retainer work' };
+  if (score >= 65) return { level: 'Moderate', color: '#fbbf24', desc: 'Some cleanup needed before retainer work' };
+  if (score >= 45) return { level: 'Challenging', color: '#f97316', desc: 'Significant issues require attention' };
+  return { level: 'Major Refactor', color: '#ef4444', desc: 'Consider rebuilding rather than patching' };
+}
+
+function getGrade(score) {
+  if (score >= 90) return 'A+';
+  if (score >= 85) return 'A';
+  if (score >= 80) return 'B+';
+  if (score >= 70) return 'B';
+  if (score >= 60) return 'C';
+  if (score >= 50) return 'D';
+  return 'F';
+}
+
+// ========== FINDINGS & RECOMMENDATIONS ==========
+
+function generateFindings(aggregated, metrics) {
+  return {
+    duplicateStyles: metrics.naming.data.duplicateCss.slice(0, 10),
+    nearDuplicateColors: metrics.styleConsistency.data.nearDuplicateColors.slice(0, 10),
+    spacingIssues: metrics.styleConsistency.data.spacingAnalysis.nearDuplicates.slice(0, 10),
+    autoGenerated: Object.entries(metrics.naming.data.autoGenerated)
+      .flatMap(([severity, items]) => items.map(i => ({ ...i, severity })))
+      .slice(0, 20),
+    nestingIssues: metrics.architecture.data.nestingAnalysis,
+    positioningIssues: metrics.technical.data.positionAnalysis,
+    breakpointIssues: metrics.technical.data.breakpointAnalysis.breakpointIssues || [],
+    globalComboWarnings: metrics.maintainability.data.comboAnalysis.globalComboWarnings || []
+  };
+}
+
+function generateRecommendations(metrics, findings, framework) {
+  const recommendations = [];
+  
+  // Critical issues first
+  if (findings.autoGenerated.filter(a => a.severity === 'critical').length > 0) {
+    recommendations.push({
+      priority: 'critical',
+      title: 'Remove copied classes',
+      desc: 'Classes with "-copy" indicate duplicated elements. Consolidate these into reusable components.',
+      impact: 'High maintenance burden and inconsistency risk'
+    });
+  }
+  
+  if (findings.duplicateStyles.length > 5) {
+    recommendations.push({
+      priority: 'high',
+      title: 'Consolidate duplicate styles',
+      desc: `${findings.duplicateStyles.length} class groups have identical CSS. Merge into single classes.`,
+      impact: 'Reduces class count and simplifies updates'
+    });
+  }
+  
+  if (findings.nearDuplicateColors.length > 3) {
+    recommendations.push({
+      priority: 'high',
+      title: 'Standardize colors',
+      desc: `${findings.nearDuplicateColors.length} color pairs are nearly identical. Create CSS variables for brand colors.`,
+      impact: 'Ensures brand consistency and easier updates'
+    });
+  }
+  
+  if (metrics.architecture.data.nestingAnalysis.maxDepth > 8) {
+    recommendations.push({
+      priority: 'high',
+      title: 'Reduce nesting depth',
+      desc: `Max nesting is ${metrics.architecture.data.nestingAnalysis.maxDepth} levels. Flatten structure where possible.`,
+      impact: 'Improves performance and maintainability'
+    });
+  }
+  
+  // Global combo warnings - high priority
+  if (findings.globalComboWarnings && findings.globalComboWarnings.length > 0) {
+    recommendations.push({
+      priority: 'high',
+      title: 'Componentize heavily-modified global classes',
+      desc: `Classes like .${findings.globalComboWarnings[0].base} have ${findings.globalComboWarnings[0].comboCount}+ combos. Create dedicated components instead.`,
+      impact: 'Reduces side-effect risk when making changes'
+    });
+  }
+  
+  // Breakpoint issues
+  if (findings.breakpointIssues && findings.breakpointIssues.length > 3) {
+    recommendations.push({
+      priority: 'medium',
+      title: 'Fix responsive spacing inconsistencies',
+      desc: `${findings.breakpointIssues.length} classes have unexpected responsive behavior (e.g., mobile spacing larger than desktop).`,
+      impact: 'Predictable responsive behavior'
+    });
+  }
+  
+  if (findings.autoGenerated.filter(a => a.severity === 'high').length > 5) {
+    recommendations.push({
+      priority: 'medium',
+      title: 'Rename auto-generated classes',
+      desc: 'Multiple numbered classes like "div-block-2" exist. Give semantic names.',
+      impact: 'Makes project more understandable'
+    });
+  }
+  
+  if (findings.spacingIssues.length > 2) {
+    recommendations.push({
+      priority: 'medium',
+      title: 'Standardize spacing',
+      desc: 'Near-duplicate spacing values found. Align to a consistent scale.',
+      impact: 'Visual consistency and easier updates'
+    });
+  }
+  
+  if (metrics.technical.data.positionAnalysis.zIndexChaos) {
+    recommendations.push({
+      priority: 'medium',
+      title: 'Organize z-index values',
+      desc: 'Z-index values are chaotic. Establish a layering system.',
+      impact: 'Prevents stacking issues'
+    });
+  }
+  
+  if (!framework && metrics.naming.data.conventions.mixed > 2) {
+    recommendations.push({
+      priority: 'low',
+      title: 'Adopt consistent naming convention',
+      desc: 'Mixed naming patterns detected. Consider adopting a framework or standard.',
+      impact: 'Long-term maintainability'
+    });
+  }
+  
+  return recommendations;
+}
+
+function generateQuickWins(metrics, findings) {
+  const wins = [];
+  
+  // Prioritize by effort/impact ratio
+  if (findings.autoGenerated.filter(a => a.severity === 'critical').length > 0) {
+    wins.push('Rename "-copy" classes with semantic names (5-10 min each)');
+  }
+  
+  if (metrics.styleConsistency.data.colors.variables.length === 0 && 
+      metrics.styleConsistency.data.colors.hardcoded.length > 5) {
+    wins.push('Create CSS variables for your 3-5 main brand colors');
+  }
+  
+  if (findings.duplicateStyles.length > 0) {
+    wins.push(`Merge ${Math.min(3, findings.duplicateStyles.length)} duplicate style groups`);
+  }
+  
+  if (metrics.architecture.data.nestingAnalysis.emptyWrappers > 3) {
+    wins.push(`Remove ${metrics.architecture.data.nestingAnalysis.emptyWrappers} empty wrapper divs`);
+  }
+  
+  if (findings.autoGenerated.filter(a => a.severity === 'high').length > 0) {
+    wins.push('Rename numbered classes (div-block-2 → card-wrapper)');
+  }
+  
+  if (findings.breakpointIssues && findings.breakpointIssues.length > 0) {
+    wins.push('Review mobile spacing that exceeds desktop values');
+  }
+  
+  if (findings.globalComboWarnings && findings.globalComboWarnings.length > 0) {
+    wins.push(`Consider making .${findings.globalComboWarnings[0].base} a component with variants`);
+  }
+  
+  return wins.slice(0, 5);
+}
+
+function generateRiskAssessment(aggregated) {
+  const { allStyles, allNodes } = aggregated;
+  const classUsage = new Map();
+  
+  allNodes.forEach(node => {
+    (node.classes || []).forEach(classId => {
+      if (!classUsage.has(classId)) classUsage.set(classId, { count: 0, pages: new Set() });
+      classUsage.get(classId).count++;
+      classUsage.get(classId).pages.add(node.pageName);
+    });
+  });
+  
+  const risks = [];
+  
+  allStyles.forEach(style => {
+    const usage = classUsage.get(style._id);
+    if (!usage) return;
+    
+    const isHighUsage = usage.count > 15;
+    const isMultiPage = usage.pages.size > 1;
+    const isGlobalName = ['section', 'container', 'wrapper', 'button'].some(g => 
+      style.name.toLowerCase() === g
+    );
+    
+    if (isHighUsage || (isGlobalName && usage.count > 3)) {
+      risks.push({
+        name: style.name,
+        usage: usage.count,
+        pages: usage.pages.size,
+        reason: isGlobalName ? 'Generic name with high usage' : 'Used in many places'
+      });
+    }
+  });
+  
+  return risks.sort((a, b) => b.usage - a.usage).slice(0, 8);
+}
+
+function generateBrief(aggregated, metrics, framework, complexity, findings) {
+  const { pageCount, totalElements, allStyles, allInteractions } = aggregated;
+  
+  let brief = `<p>This analysis covers <strong>${pageCount} page${pageCount > 1 ? 's' : ''}</strong> `;
+  brief += `containing <strong>${totalElements} elements</strong> and <strong>${allStyles.length} classes</strong>. `;
+  
+  if (framework) {
+    brief += `The project uses the <strong>${framework}</strong> framework. `;
+  } else {
+    brief += `No established framework was detected. `;
+  }
+  
+  brief += `</p>`;
+  
+  // Overall assessment
+  brief += `<p>`;
+  if (complexity.level === 'Easy') {
+    brief += `The project demonstrates <strong>professional development patterns</strong>. `;
+    brief += `Class naming is intentional, spacing follows a system, and the structure is maintainable. `;
+    brief += `This project is suitable for retainer work with minimal preparation.`;
+  } else if (complexity.level === 'Moderate') {
+    brief += `The project has a <strong>reasonable foundation</strong> but shows some inconsistencies. `;
+    brief += `Before starting retainer work, address the priority recommendations below. `;
+    brief += `Estimated cleanup: 2-4 hours.`;
+  } else if (complexity.level === 'Challenging') {
+    brief += `The project has <strong>significant technical debt</strong>. `;
+    brief += `Multiple issues will make ongoing development slow and risky. `;
+    brief += `Consider a cleanup sprint before accepting retainer work. Estimated effort: 1-2 days.`;
+  } else {
+    brief += `The project has <strong>fundamental issues</strong> that indicate ad-hoc development. `;
+    brief += `Modifications are high-risk and time-consuming. `;
+    brief += `Recommend discussing a rebuild vs. patch approach with the client.`;
+  }
+  brief += `</p>`;
+  
+  // Key concerns
+  const concerns = [];
+  if (findings.autoGenerated.filter(a => a.severity === 'critical').length > 0) {
+    concerns.push('copied classes indicating poor reuse');
+  }
+  if (findings.nearDuplicateColors.length > 3) {
+    concerns.push('inconsistent colors suggesting no design system');
+  }
+  if (metrics.architecture.data.nestingAnalysis.maxDepth > 8) {
+    concerns.push('excessive nesting making structure hard to follow');
+  }
+  if (metrics.technical.data.positionAnalysis.zIndexChaos) {
+    concerns.push('z-index chaos indicating layout workarounds');
+  }
+  
+  if (concerns.length > 0) {
+    brief += `<p><strong>Key concerns:</strong> ${concerns.join(', ')}.</p>`;
+  }
+  
+  // Interactions note
+  if (allInteractions.length > 10) {
+    brief += `<p>Note: This project has <strong>${allInteractions.length} interactions</strong> which adds to the maintenance surface area.</p>`;
+  }
+  
+  return brief;
+}
+
+// ========== DISPLAY RESULTS ==========
+
+function displayResults() {
+  els.pasteZone.classList.add('hidden');
+  els.collectedSection.classList.add('hidden');
+  els.resultsSection.classList.remove('hidden');
+
+  const r = analysisResult;
+  const color = r.score >= 70 ? '#22c55e' : r.score >= 50 ? '#fbbf24' : '#ef4444';
+
+  // Score circle
+  const circ = 2 * Math.PI * 65;
+  els.scoreProgress.style.strokeDashoffset = circ - (r.score / 100) * circ;
+  els.scoreProgress.style.stroke = color;
+  els.scoreValue.textContent = r.score;
+  els.scoreValue.style.color = color;
+  
+  // Grade & Complexity
+  els.gradeBadge.textContent = `Grade: ${r.grade}`;
+  els.gradeBadge.style.background = `${color}20`;
+  els.gradeBadge.style.color = color;
+  
+  els.complexityBadge.textContent = r.complexity.level;
+  els.complexityBadge.style.background = `${r.complexity.color}20`;
+  els.complexityBadge.style.color = r.complexity.color;
+  
+  els.verdictText.textContent = r.complexity.desc;
+  
+  // Framework
+  if (r.framework) {
+    els.frameworkBadge.textContent = `✓ ${r.framework}`;
+    els.frameworkBadge.className = 'framework-badge detected';
+  } else {
+    els.frameworkBadge.textContent = 'Custom approach (no framework)';
+    els.frameworkBadge.className = 'framework-badge none';
+  }
+  
+  // Intentionality
+  const intColor = r.intentionality >= 70 ? '#22c55e' : r.intentionality >= 50 ? '#fbbf24' : '#ef4444';
+  els.intentionalityValue.textContent = `${r.intentionality}%`;
+  els.intentionalityValue.style.color = intColor;
+  els.intentionalityFill.style.width = `${r.intentionality}%`;
+  els.intentionalityFill.style.background = intColor;
+
+  // Metrics grid
+  const metricMeta = {
+    naming: { icon: '📝', label: 'Naming Quality' },
+    styleConsistency: { icon: '🎨', label: 'Style Consistency' },
+    typography: { icon: '🔤', label: 'Typography' },
+    architecture: { icon: '🏗️', label: 'Architecture' },
+    maintainability: { icon: '🔧', label: 'Maintainability' },
+    technical: { icon: '⚙️', label: 'Technical' }
+  };
+  
+  els.metricsGrid.innerHTML = Object.entries(r.metrics).map(([key, m]) => {
+    const pct = (m.score / m.max) * 100;
+    const c = pct >= 70 ? '#22c55e' : pct >= 40 ? '#fbbf24' : '#ef4444';
+    const cls = pct >= 70 ? 'good' : pct >= 40 ? 'warning' : 'bad';
+    const meta = metricMeta[key] || { icon: '📊', label: key };
+    
+    let issuesHtml = '';
+    if (m.issues && m.issues.length > 0) {
+      issuesHtml = `<div class="metric-issues">${m.issues.slice(0, 2).map(i => 
+        `<div class="metric-issue">${escapeHtml(i)}</div>`
+      ).join('')}</div>`;
+    }
+    
+    return `
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">${meta.icon} ${meta.label}</span>
+          <span class="metric-score ${cls}">${m.score}/${m.max}</span>
+        </div>
+        <div class="metric-bar"><div class="metric-fill" style="width:${pct}%;background:${c}"></div></div>
+        <div class="metric-detail">${m.detail}</div>
+        ${issuesHtml}
+      </div>
+    `;
+  }).join('');
+
+  // Stats row
+  els.statsRow.innerHTML = `
+    <div class="stat-card"><span class="stat-value">${r.aggregated.allStyles.length}</span><span class="stat-label">Classes</span></div>
+    <div class="stat-card"><span class="stat-value">${r.aggregated.pageCount}</span><span class="stat-label">Pages</span></div>
+    <div class="stat-card"><span class="stat-value">${r.aggregated.totalElements}</span><span class="stat-label">Elements</span></div>
+    <div class="stat-card"><span class="stat-value">${r.aggregated.allInteractions.length}</span><span class="stat-label">Interactions</span></div>
+    <div class="stat-card"><span class="stat-value">${r.aggregated.unlinkedSymbols}</span><span class="stat-label">Unlinked Symbols</span></div>
+  `;
+
+  // Brief
+  els.pagesAnalyzed.textContent = `${r.aggregated.pageCount} page${r.aggregated.pageCount > 1 ? 's' : ''} analyzed: ${r.pages.map(p => p.name).join(', ')}`;
+  els.briefContent.innerHTML = r.brief;
+  
+  // Priority recommendations
+  els.priorityList.innerHTML = r.recommendations.map(rec => `
+    <div class="priority-item ${rec.priority}">
+      <span class="priority-badge">${rec.priority}</span>
+      <div class="priority-content">
+        <div class="priority-title">${escapeHtml(rec.title)}</div>
+        <div class="priority-desc">${escapeHtml(rec.desc)}</div>
+        <div class="priority-impact">Impact: ${escapeHtml(rec.impact)}</div>
+      </div>
+    </div>
+  `).join('') || '<p class="empty-msg">No major issues found!</p>';
+  
+  // Quick wins
+  if (r.quickWins.length > 0) {
+    els.quickWins.classList.remove('hidden');
+    els.quickWinsList.innerHTML = r.quickWins.map(w => 
+      `<div class="quick-win-item">${escapeHtml(w)}</div>`
+    ).join('');
+  } else {
+    els.quickWins.classList.add('hidden');
+  }
+  
+  // Risk assessment
+  if (r.riskAssessment.length > 0) {
+    els.riskSection.classList.remove('hidden');
+    els.riskGrid.innerHTML = r.riskAssessment.map(risk => `
+      <div class="risk-item">
+        <div class="risk-class">.${escapeHtml(risk.name)}</div>
+        <div class="risk-reason">${escapeHtml(risk.reason)}</div>
+        <div class="risk-count">Used ${risk.usage} times across ${risk.pages} page${risk.pages > 1 ? 's' : ''}</div>
+      </div>
+    `).join('');
+  } else {
+    els.riskSection.classList.add('hidden');
+  }
+
+  // Page breakdown
+  if (r.aggregated.pageCount > 1) {
+    els.breakdownCard.style.display = 'block';
+    els.pageBreakdown.innerHTML = r.pages.map(p => `
+      <div class="breakdown-item">
+        <span class="breakdown-name">${escapeHtml(p.name)}</span>
+        <div class="breakdown-stats">
+          <span class="breakdown-stat">${p.classCount} classes</span>
+          <span class="breakdown-stat">${p.elementCount} elements</span>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    els.breakdownCard.style.display = 'none';
+  }
+
+  // Detailed findings
+  displayFindings(r.findings);
+
+  // Export
+  const exportData = {
+    exportVersion: '2.0',
+    exportDate: new Date().toISOString(),
+    score: r.score,
+    grade: r.grade,
+    complexity: r.complexity.level,
+    intentionality: r.intentionality,
+    framework: r.framework,
+    pages: r.pages,
+    recommendations: r.recommendations,
+    quickWins: r.quickWins
+  };
+  els.exportOutput.value = JSON.stringify(exportData, null, 2);
+}
+
+function displayFindings(findings) {
+  // Duplicate styles
+  if (findings.duplicateStyles.length > 0) {
+    els.duplicateStylesSection.classList.remove('hidden');
+    els.duplicateStylesList.innerHTML = findings.duplicateStyles.map(dup => `
+      <div class="finding-item">
+        <div class="finding-title">Identical CSS in ${dup.names.length} classes</div>
+        <div class="finding-classes">${dup.names.map(n => `<span class="finding-class">.${escapeHtml(n)}</span>`).join('')}</div>
+        <div class="finding-detail">${escapeHtml(dup.css)}...</div>
+      </div>
+    `).join('');
+  } else {
+    els.duplicateStylesSection.classList.add('hidden');
+  }
+  
+  // Near-duplicate colors
+  if (findings.nearDuplicateColors.length > 0) {
+    els.nearDuplicateColorsSection.classList.remove('hidden');
+    els.nearDuplicateColorsList.innerHTML = findings.nearDuplicateColors.map(pair => `
+      <div class="color-pair">
+        <div class="color-pair-swatches">
+          <div class="color-pair-swatch" style="background:${pair.color1.value}"></div>
+          <div class="color-pair-swatch" style="background:${pair.color2.value}"></div>
+        </div>
+        <div class="color-pair-info">${pair.color1.value} vs ${pair.color2.value}</div>
+        <div class="color-pair-diff">${pair.percentage}% similar</div>
+      </div>
+    `).join('');
+  } else {
+    els.nearDuplicateColorsSection.classList.add('hidden');
+  }
+  
+  // Spacing issues
+  if (findings.spacingIssues.length > 0) {
+    els.inconsistentSpacingSection.classList.remove('hidden');
+    els.inconsistentSpacingList.innerHTML = findings.spacingIssues.map(s => `
+      <div class="finding-item">
+        <div class="finding-title">${s.v1}px vs ${s.v2}px (${s.diff}px difference)</div>
+        <div class="finding-detail">Consider standardizing to one value</div>
+      </div>
+    `).join('');
+  } else {
+    els.inconsistentSpacingSection.classList.add('hidden');
+  }
+  
+  // Auto-generated classes
+  const criticalAuto = findings.autoGenerated.filter(a => a.severity === 'critical' || a.severity === 'high');
+  if (criticalAuto.length > 0) {
+    els.autoGeneratedSection.classList.remove('hidden');
+    els.autoGeneratedList.innerHTML = criticalAuto.slice(0, 10).map(a => `
+      <div class="finding-item">
+        <div class="finding-title">.${escapeHtml(a.name)}</div>
+        <div class="finding-detail">${escapeHtml(a.desc)} - ${a.severity} severity</div>
+      </div>
+    `).join('');
+  } else {
+    els.autoGeneratedSection.classList.add('hidden');
+  }
+  
+  // Nesting issues
+  if (findings.nestingIssues.maxDepth > 6) {
+    els.nestingSection.classList.remove('hidden');
+    els.nestingList.innerHTML = `
+      <div class="finding-item">
+        <div class="finding-title">Maximum nesting: ${findings.nestingIssues.maxDepth} levels</div>
+        <div class="finding-detail">Recommended maximum: 6-8 levels for maintainability</div>
+      </div>
+      ${findings.nestingIssues.emptyWrappers > 0 ? `
+        <div class="finding-item">
+          <div class="finding-title">${findings.nestingIssues.emptyWrappers} empty wrapper divs</div>
+          <div class="finding-detail">Divs with no classes and single children add unnecessary complexity</div>
+        </div>
+      ` : ''}
+    `;
+  } else {
+    els.nestingSection.classList.add('hidden');
+  }
+  
+  // Positioning issues
+  const posIssues = findings.positioningIssues;
+  if (posIssues.absoluteCount > 10 || posIssues.zIndexChaos) {
+    els.positioningSection.classList.remove('hidden');
+    let html = '';
+    if (posIssues.absoluteCount > 10) {
+      html += `<div class="finding-item"><div class="finding-title">${posIssues.absoluteCount} absolute positioned elements</div><div class="finding-detail">High count suggests layout workarounds</div></div>`;
+    }
+    if (posIssues.zIndexChaos) {
+      html += `<div class="finding-item"><div class="finding-title">Z-index values: ${posIssues.zIndexValues.join(', ')}</div><div class="finding-detail">Values over 100 or too many unique values indicate problems</div></div>`;
+    }
+    els.positioningList.innerHTML = html;
+  } else {
+    els.positioningSection.classList.add('hidden');
+  }
+  
+  // Breakpoint issues
+  if (findings.breakpointIssues && findings.breakpointIssues.length > 0) {
+    els.breakpointSection.classList.remove('hidden');
+    els.breakpointList.innerHTML = findings.breakpointIssues.slice(0, 8).map(issue => `
+      <div class="finding-item">
+        <div class="finding-title">.${escapeHtml(issue.class)}</div>
+        <div class="finding-detail">${escapeHtml(issue.issue)}</div>
+        ${issue.base && issue.variant ? `<div class="finding-detail">Desktop: ${issue.base}px → ${issue.breakpoint}: ${issue.variant}px</div>` : ''}
+      </div>
+    `).join('');
+  } else {
+    els.breakpointSection.classList.add('hidden');
+  }
+  
+  // Global combo warnings
+  if (findings.globalComboWarnings && findings.globalComboWarnings.length > 0) {
+    els.globalComboSection.classList.remove('hidden');
+    els.globalComboList.innerHTML = findings.globalComboWarnings.map(warn => `
+      <div class="finding-item">
+        <div class="finding-title">.${escapeHtml(warn.base)} has ${warn.comboCount} combo variations</div>
+        <div class="finding-detail">Consider creating a component instead of styling via combos</div>
+        <div class="finding-classes">${warn.combos.slice(0, 5).map(c => `<span class="finding-class">.${escapeHtml(c)}</span>`).join('')}${warn.combos.length > 5 ? `<span class="finding-class">+${warn.combos.length - 5} more</span>` : ''}</div>
+      </div>
+    `).join('');
+  } else {
+    els.globalComboSection.classList.add('hidden');
+  }
+}
+
+// ========== EXPORT FUNCTIONS ==========
+
+async function copyJson() {
+  try {
+    await navigator.clipboard.writeText(els.exportOutput.value);
+    showToast('Copied to clipboard!');
+  } catch (e) {
+    showToast('Failed to copy', true);
+  }
+}
+
+function downloadJson() {
+  const blob = new Blob([els.exportOutput.value], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `webflow-health-report-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Report downloaded!');
+}
+</script>
+</body>
+</html>
