@@ -232,6 +232,70 @@
     .collapsible-content { overflow: hidden; transition: max-height 0.3s ease; }
     .collapsible-content.collapsed { max-height: 0; }
 
+    /* Tooltips */
+    .metric-header { position: relative; }
+    .tooltip-trigger { display: inline-flex; align-items: center; gap: 6px; cursor: help; }
+    .tooltip-icon { width: 16px; height: 16px; background: #333; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: #888; flex-shrink: 0; }
+    .tooltip-icon:hover { background: #444; color: #fff; }
+    .tooltip-content { position: absolute; left: 0; top: 100%; margin-top: 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 14px 16px; font-size: 12px; color: #c0c0c0; line-height: 1.6; width: 280px; z-index: 100; opacity: 0; visibility: hidden; transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .tooltip-content::before { content: ''; position: absolute; top: -6px; left: 20px; width: 10px; height: 10px; background: #1a1a1a; border-left: 1px solid #333; border-top: 1px solid #333; transform: rotate(45deg); }
+    .tooltip-trigger:hover + .tooltip-content, .tooltip-content:hover { opacity: 1; visibility: visible; }
+    .tooltip-content strong { color: #fff; display: block; margin-bottom: 6px; }
+    .tooltip-content ul { margin: 8px 0 0 0; padding-left: 16px; }
+    .tooltip-content li { margin: 4px 0; }
+
+    /* Data Explorer */
+    .element-types-panel { background: #1a1a1a; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .element-types-panel h3 { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .type-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+    .type-tag { background: #252525; padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+    .type-tag .name { color: #a78bfa; }
+    .type-tag .count { color: #666; margin-left: 4px; }
+
+    .explorer-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .explorer-tab { padding: 10px 20px; background: #1a1a1a; border: none; border-radius: 8px; color: #888; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+    .explorer-tab:hover { background: #252525; color: #e0e0e0; }
+    .explorer-tab.active { background: #4a9eff; color: #fff; }
+    .explorer-toolbar { display: flex; gap: 8px; margin-left: auto; }
+
+    .explorer-search { width: 100%; padding: 12px 16px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; font-size: 14px; margin-bottom: 16px; outline: none; }
+    .explorer-search:focus { border-color: #4a9eff; }
+    .explorer-search::placeholder { color: #555; }
+
+    .explorer-content { background: #1a1a1a; border-radius: 10px; padding: 20px; max-height: 500px; overflow: auto; }
+    .explorer-panel.hidden { display: none; }
+
+    /* Tree View */
+    .tree-node { padding: 4px 0; }
+    .tree-node-header { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-family: 'SF Mono', Monaco, monospace; font-size: 13px; }
+    .tree-node-header:hover { background: #252525; }
+    .tree-toggle { width: 16px; color: #555; font-size: 10px; }
+    .tree-tag { color: #4a9eff; }
+    .tree-type { color: #a78bfa; font-size: 12px; }
+    .tree-name { color: #666; font-size: 12px; }
+    .tree-classes { color: #00d4aa; font-size: 11px; }
+    .tree-children { margin-left: 20px; padding-left: 12px; border-left: 1px solid #252525; }
+    .tree-highlight { background: rgba(251, 191, 36, 0.15); }
+
+    /* Styles List */
+    .style-item { padding: 14px 0; border-bottom: 1px solid #252525; }
+    .style-item:last-child { border-bottom: none; }
+    .style-header { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px; border-radius: 6px; }
+    .style-header:hover { background: #252525; }
+    .style-name { color: #00d4aa; font-family: 'SF Mono', Monaco, monospace; font-size: 14px; font-weight: 600; }
+    .style-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .style-variants { font-size: 11px; color: #a78bfa; }
+    .style-pages { font-size: 11px; color: #666; margin-left: auto; }
+    .style-details { margin-top: 12px; padding-left: 24px; }
+    .style-id { font-size: 11px; color: #555; margin-bottom: 8px; }
+    .style-css { background: #0a0a0a; padding: 12px; border-radius: 8px; font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: #00d4aa; white-space: pre-wrap; line-height: 1.6; }
+    .variant-section { margin-top: 12px; }
+    .variant-label { font-size: 11px; color: #a78bfa; margin-bottom: 6px; }
+    .variant-name { color: #fbbf24; font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
+
+    /* Raw JSON */
+    .raw-json { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: #888; line-height: 1.5; }
+
     @media (max-width: 700px) {
       .score-header { flex-direction: column; align-items: center; text-align: center; }
       .stats-row { grid-template-columns: repeat(2, 1fr); }
@@ -387,6 +451,38 @@
         <div class="findings-section" id="globalComboSection">
           <h3>🔗 Global Class Combo Overload</h3>
           <div class="findings-grid" id="globalComboList"></div>
+        </div>
+      </div>
+
+      <!-- Data Explorer -->
+      <div class="card" id="explorerCard">
+        <h2>🔎 Data Explorer</h2>
+        
+        <!-- Element Types -->
+        <div class="element-types-panel">
+          <h3>Element Types</h3>
+          <div class="type-tags" id="explorerTypeTags"></div>
+        </div>
+
+        <!-- Tabs & Toolbar -->
+        <div class="explorer-tabs">
+          <button class="explorer-tab active" data-tab="tree">Element Tree</button>
+          <button class="explorer-tab" data-tab="styles">Styles <span id="explorerStylesCount"></span></button>
+          <button class="explorer-tab" data-tab="raw">Raw JSON</button>
+          <div class="explorer-toolbar">
+            <button class="btn btn-sm" id="explorerExpandBtn">Expand All</button>
+            <button class="btn btn-sm" id="explorerCollapseBtn">Collapse All</button>
+          </div>
+        </div>
+
+        <!-- Search -->
+        <input type="text" class="explorer-search" id="explorerSearch" placeholder="Search elements or classes...">
+
+        <!-- Content Panels -->
+        <div class="explorer-content">
+          <div id="explorerTreeContent" class="explorer-panel"></div>
+          <div id="explorerStylesContent" class="explorer-panel hidden"></div>
+          <div id="explorerRawContent" class="explorer-panel hidden"></div>
         </div>
       </div>
 
@@ -553,9 +649,17 @@ const elementIds = [
   'pageNameModal', 'pageNameInput', 'cancelPageBtn', 'savePageBtn', 'copyScriptBtn',
   'duplicateStylesSection', 'nearDuplicateColorsSection', 'inconsistentSpacingSection',
   'autoGeneratedSection', 'nestingSection', 'positioningSection', 'breakpointSection', 
-  'globalComboSection', 'quickWins', 'riskSection'
+  'globalComboSection', 'quickWins', 'riskSection',
+  'explorerCard', 'explorerTypeTags', 'explorerStylesCount', 'explorerSearch',
+  'explorerTreeContent', 'explorerStylesContent', 'explorerRawContent',
+  'explorerExpandBtn', 'explorerCollapseBtn'
 ];
 elementIds.forEach(id => els[id] = document.getElementById(id));
+
+// Explorer state
+let explorerExpandedNodes = new Set();
+let explorerActiveTab = 'tree';
+let explorerSearchTerm = '';
 
 // ========== EVENT LISTENERS ==========
 
@@ -575,6 +679,17 @@ els.copyScriptBtn?.addEventListener('click', () => {
   navigator.clipboard.writeText(document.querySelector('.script-code code').textContent);
   els.copyScriptBtn.textContent = 'Copied!';
   setTimeout(() => els.copyScriptBtn.textContent = 'Copy', 2000);
+});
+
+// Explorer event listeners
+document.querySelectorAll('.explorer-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchExplorerTab(tab.dataset.tab));
+});
+els.explorerExpandBtn?.addEventListener('click', expandAllExplorer);
+els.explorerCollapseBtn?.addEventListener('click', collapseAllExplorer);
+els.explorerSearch?.addEventListener('input', (e) => {
+  explorerSearchTerm = e.target.value.toLowerCase();
+  renderExplorer();
 });
 
 // ========== UTILITY FUNCTIONS ==========
@@ -1729,18 +1844,44 @@ function assessGlobalClassRisk(styles, nodes) {
     });
   });
   
+  // Expected framework/utility classes - these are MEANT to be used everywhere
+  const expectedPatterns = [
+    /^u-/, /^cc-/, /^c-/, /^l-/, /^is-/, /^has-/,
+    /^col/, /^row/, /^slot/, /^page-/,
+    /^padding-/, /^margin-/, /^text-size-/, /^text-color-/,
+    /^nav/, /^footer/, /^header/, /^menu/,
+    /^w-/, /^flex/, /^grid-/, /^gap-/
+  ];
+  
+  function isExpectedUtility(name) {
+    const lower = name.toLowerCase();
+    return expectedPatterns.some(p => p.test(lower));
+  }
+  
   const highRisk = [];
   const globalNames = ['section', 'container', 'wrapper', 'button', 'heading', 'text', 'image', 'link'];
   
   styles.forEach(style => {
     const usage = classUsage.get(style._id) || 0;
-    const isGlobalName = globalNames.some(g => style.name.toLowerCase() === g);
+    const lower = style.name.toLowerCase();
     
-    if (usage > 20 || (isGlobalName && usage > 5)) {
+    // Skip expected utility/framework classes
+    if (isExpectedUtility(style.name)) return;
+    
+    const isGlobalName = globalNames.some(g => lower === g);
+    
+    // Only flag if it's a truly generic base that's custom (not utility)
+    if (usage > 20 && !isExpectedUtility(style.name)) {
       highRisk.push({
         name: style.name,
         usage,
-        reason: isGlobalName ? 'Global name, high usage' : 'Very high usage'
+        reason: 'Very high usage - changes affect many elements'
+      });
+    } else if (isGlobalName && usage > 8) {
+      highRisk.push({
+        name: style.name,
+        usage,
+        reason: 'Generic base class'
       });
     }
   });
@@ -2233,29 +2374,86 @@ function generateRiskAssessment(aggregated) {
     });
   });
   
+  // Expected framework/utility classes that SHOULD be used many times
+  // These are intentionally reusable and not risks
+  const expectedHighUsage = [
+    // MAST patterns
+    /^u-/, /^cc-/, /^c-/, /^l-/, /^is-/, /^has-/,
+    /^col$/, /^col-/, /^row$/, /^row-/,
+    /^slot/, /^page-wrapper/, /^page-main/,
+    // Client-First patterns
+    /^padding-/, /^margin-/, /^text-size-/, /^text-color-/,
+    /^background-color-/, /^heading-style-/, /^text-style-/,
+    /^spacer-/, /^max-width-/, /^hide-/,
+    // Common utility patterns
+    /^w-/, /^h-/, /^flex/, /^grid-/, /^gap-/,
+    /^overflow-/, /^position-/, /^z-/,
+    // Navigation/common components (expected everywhere)
+    /^nav/, /^navbar/, /^footer/, /^header/,
+    /^menu/, /^logo/, /^brand/,
+    // Webflow native
+    /^w-nav/, /^w-dropdown/, /^w-slider/, /^w-tab/, /^w-form/,
+    // State classes
+    /^active$/, /^current$/, /^open$/, /^closed$/,
+    /^visible$/, /^hidden$/, /^show$/, /^hide$/
+  ];
+  
+  function isExpectedHighUsage(name) {
+    const lower = name.toLowerCase();
+    return expectedHighUsage.some(pattern => pattern.test(lower));
+  }
+  
   const risks = [];
+  
+  // Track if we detected a framework to adjust expectations
+  const detectedFramework = detectFramework(allStyles.map(s => s.name));
   
   allStyles.forEach(style => {
     const usage = classUsage.get(style._id);
     if (!usage) return;
     
+    const name = style.name;
+    const lower = name.toLowerCase();
+    
+    // Skip if it's an expected high-usage class
+    if (isExpectedHighUsage(name)) return;
+    
     const isHighUsage = usage.count > 15;
     const isMultiPage = usage.pages.size > 1;
-    const isGlobalName = ['section', 'container', 'wrapper', 'button'].some(g => 
-      style.name.toLowerCase() === g
-    );
     
-    if (isHighUsage || (isGlobalName && usage.count > 3)) {
+    // Only flag generic names that aren't part of a framework pattern
+    const genericNames = ['section', 'container', 'wrapper', 'button', 'card', 'block', 'item', 'content', 'text', 'image', 'icon', 'link'];
+    const isGenericBase = genericNames.some(g => lower === g);
+    
+    // Check if this looks like a custom class that's heavily used
+    // (not a utility, not framework, but used everywhere)
+    const looksCustom = !lower.includes('-') || 
+      (lower.split('-').length <= 2 && !isExpectedHighUsage(name));
+    
+    if (isHighUsage && looksCustom) {
+      // Only add if it's truly risky - a custom class used many places
       risks.push({
         name: style.name,
         usage: usage.count,
         pages: usage.pages.size,
-        reason: isGlobalName ? 'Generic name with high usage' : 'Used in many places'
+        reason: isGenericBase ? 'Generic base class' : 'Custom class with high usage'
+      });
+    } else if (isGenericBase && usage.count > 5 && !detectedFramework) {
+      // Generic names in non-framework projects are higher risk
+      risks.push({
+        name: style.name,
+        usage: usage.count,
+        pages: usage.pages.size,
+        reason: 'Generic name - modifications affect many elements'
       });
     }
   });
   
-  return risks.sort((a, b) => b.usage - a.usage).slice(0, 8);
+  // Filter to only truly concerning classes
+  return risks
+    .filter(r => r.usage > 8 || r.pages > 2) // Must be used enough to matter
+    .sort((a, b) => (b.usage * b.pages) - (a.usage * a.pages)) // Sort by impact
+    .slice(0, 8);
 }
 
 function generateBrief(aggregated, metrics, framework, complexity, findings) {
@@ -2366,19 +2564,87 @@ function displayResults() {
 
   // Metrics grid
   const metricMeta = {
-    naming: { icon: '📝', label: 'Naming Quality' },
-    styleConsistency: { icon: '🎨', label: 'Style Consistency' },
-    typography: { icon: '🔤', label: 'Typography' },
-    architecture: { icon: '🏗️', label: 'Architecture' },
-    maintainability: { icon: '🔧', label: 'Maintainability' },
-    technical: { icon: '⚙️', label: 'Technical' }
+    naming: { 
+      icon: '📝', 
+      label: 'Naming Quality',
+      tooltip: `<strong>How we measure naming:</strong>
+        <ul>
+          <li>Auto-generated classes (div-block, text-block-2)</li>
+          <li>Copied classes (-copy, copy-of-)</li>
+          <li>Numbered duplicates with identical CSS</li>
+          <li>Naming convention consistency</li>
+        </ul>
+        Severity: Copied = critical, Numbered = high, Generic = medium`
+    },
+    styleConsistency: { 
+      icon: '🎨', 
+      label: 'Style Consistency',
+      tooltip: `<strong>How we measure style consistency:</strong>
+        <ul>
+          <li>Near-duplicate colors (~5% difference)</li>
+          <li>CSS variables usage (intentionality)</li>
+          <li>Spacing values following a scale (4px/8px)</li>
+          <li>Root-level spacing consistency</li>
+        </ul>
+        Variables = intentional design system`
+    },
+    typography: { 
+      icon: '🔤', 
+      label: 'Typography',
+      tooltip: `<strong>How we measure typography:</strong>
+        <ul>
+          <li>Number of font families (ideal: ≤3)</li>
+          <li>Font size variations (ideal: ≤8)</li>
+          <li>Near-duplicate sizes (14px vs 15px)</li>
+          <li>Type scale consistency (1.2x, 1.25x ratio)</li>
+        </ul>
+        Fewer sizes = intentional type system`
+    },
+    architecture: { 
+      icon: '🏗️', 
+      label: 'Architecture',
+      tooltip: `<strong>How we measure architecture:</strong>
+        <ul>
+          <li>Nesting depth (ideal: ≤6-8 levels)</li>
+          <li>Empty wrapper divs (no class, single child)</li>
+          <li>Unlinked symbols (broken components)</li>
+          <li>Structure consistency across pages</li>
+        </ul>
+        Deep nesting = hard to maintain`
+    },
+    maintainability: { 
+      icon: '🔧', 
+      label: 'Maintainability',
+      tooltip: `<strong>How we measure maintainability:</strong>
+        <ul>
+          <li>Class reuse across pages</li>
+          <li>Combo class strategy</li>
+          <li>Button/component variants</li>
+          <li>Empty classes (not JS hooks)</li>
+          <li>Semantic class misuse</li>
+        </ul>
+        Higher reuse = easier updates`
+    },
+    technical: { 
+      icon: '⚙️', 
+      label: 'Technical',
+      tooltip: `<strong>How we measure technical quality:</strong>
+        <ul>
+          <li>Breakpoint consistency</li>
+          <li>Position:absolute count</li>
+          <li>Z-index chaos (values >100)</li>
+          <li>Overflow:hidden overuse</li>
+          <li>Interaction complexity & reuse</li>
+        </ul>
+        Band-aid fixes = risky changes`
+    }
   };
   
   els.metricsGrid.innerHTML = Object.entries(r.metrics).map(([key, m]) => {
     const pct = (m.score / m.max) * 100;
     const c = pct >= 70 ? '#22c55e' : pct >= 40 ? '#fbbf24' : '#ef4444';
     const cls = pct >= 70 ? 'good' : pct >= 40 ? 'warning' : 'bad';
-    const meta = metricMeta[key] || { icon: '📊', label: key };
+    const meta = metricMeta[key] || { icon: '📊', label: key, tooltip: '' };
     
     let issuesHtml = '';
     if (m.issues && m.issues.length > 0) {
@@ -2390,7 +2656,11 @@ function displayResults() {
     return `
       <div class="metric-card">
         <div class="metric-header">
-          <span class="metric-title">${meta.icon} ${meta.label}</span>
+          <span class="tooltip-trigger">
+            <span class="metric-title">${meta.icon} ${meta.label}</span>
+            <span class="tooltip-icon">?</span>
+          </span>
+          <div class="tooltip-content">${meta.tooltip}</div>
           <span class="metric-score ${cls}">${m.score}/${m.max}</span>
         </div>
         <div class="metric-bar"><div class="metric-fill" style="width:${pct}%;background:${c}"></div></div>
@@ -2446,7 +2716,16 @@ function displayResults() {
       </div>
     `).join('');
   } else {
-    els.riskSection.classList.add('hidden');
+    // No risky classes found - either framework is handling it well, or project is small
+    if (r.aggregated.allStyles.length > 50) {
+      els.riskSection.classList.remove('hidden');
+      els.riskGrid.innerHTML = `<div class="risk-item" style="border-color: #22c55e;">
+        <div class="risk-class" style="color: #22c55e;">✓ No high-risk classes detected</div>
+        <div class="risk-reason">Utility and framework classes are properly used for reusability</div>
+      </div>`;
+    } else {
+      els.riskSection.classList.add('hidden');
+    }
   }
 
   // Page breakdown
@@ -2482,6 +2761,13 @@ function displayResults() {
     quickWins: r.quickWins
   };
   els.exportOutput.value = JSON.stringify(exportData, null, 2);
+  
+  // Render data explorer
+  explorerExpandedNodes = new Set(['root']);
+  // Auto-expand root nodes
+  const rootNodes = findRootNodes(r.aggregated.allNodes, r.aggregated.nodeMap);
+  rootNodes.forEach(n => explorerExpandedNodes.add('node-' + n._id));
+  renderExplorer();
 }
 
 function displayFindings(findings) {
@@ -2605,6 +2891,247 @@ function displayFindings(findings) {
   } else {
     els.globalComboSection.classList.add('hidden');
   }
+}
+
+// ========== DATA EXPLORER ==========
+
+function switchExplorerTab(tab) {
+  explorerActiveTab = tab;
+  document.querySelectorAll('.explorer-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  els.explorerTreeContent?.classList.toggle('hidden', tab !== 'tree');
+  els.explorerStylesContent?.classList.toggle('hidden', tab !== 'styles');
+  els.explorerRawContent?.classList.toggle('hidden', tab !== 'raw');
+}
+
+function expandAllExplorer() {
+  if (!analysisResult) return;
+  const { allNodes, allStyles } = analysisResult.aggregated;
+  allNodes.forEach(n => explorerExpandedNodes.add('node-' + n._id));
+  allStyles.forEach(s => explorerExpandedNodes.add('style-' + s._id));
+  renderExplorer();
+}
+
+function collapseAllExplorer() {
+  explorerExpandedNodes = new Set(['root']);
+  renderExplorer();
+}
+
+function renderExplorer() {
+  if (!analysisResult) return;
+  
+  const { allNodes, allStyles } = analysisResult.aggregated;
+  
+  // Build node map
+  const nodeMap = {};
+  allNodes.forEach(n => nodeMap[n._id] = n);
+  
+  // Build style map for name lookups
+  const styleMap = {};
+  allStyles.forEach(s => styleMap[s._id] = s);
+  
+  // Render element types
+  renderExplorerTypes(allNodes);
+  
+  // Render tree
+  renderExplorerTree(allNodes, nodeMap, styleMap);
+  
+  // Render styles
+  renderExplorerStyles(allStyles);
+  
+  // Render raw JSON
+  renderExplorerRaw();
+  
+  // Update styles count
+  if (els.explorerStylesCount) {
+    els.explorerStylesCount.textContent = `(${allStyles.length})`;
+  }
+}
+
+function renderExplorerTypes(nodes) {
+  const types = {};
+  nodes.forEach(n => {
+    const type = n.type || 'undefined';
+    types[type] = (types[type] || 0) + 1;
+  });
+  
+  if (els.explorerTypeTags) {
+    els.explorerTypeTags.innerHTML = Object.entries(types)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => `
+        <span class="type-tag">
+          <span class="name">${escapeHtml(type)}</span>
+          <span class="count">×${count}</span>
+        </span>
+      `).join('');
+  }
+}
+
+function findRootNodes(nodes, nodeMap) {
+  const childIds = new Set();
+  nodes.forEach(n => {
+    (n.children || []).forEach(id => childIds.add(id));
+  });
+  return nodes.filter(n => !childIds.has(n._id));
+}
+
+function getStyleName(styleId, styleMap) {
+  const style = styleMap[styleId];
+  return style?.name || (typeof styleId === 'string' ? styleId.substring(0, 8) : 'unknown');
+}
+
+function getNodeDisplayName(node) {
+  return node.data?.displayName || node.data?.tag || '';
+}
+
+function renderExplorerTree(nodes, nodeMap, styleMap) {
+  const rootNodes = findRootNodes(nodes, nodeMap);
+  
+  function renderNode(node, depth = 0) {
+    const id = 'node-' + node._id;
+    const isExpanded = explorerExpandedNodes.has(id);
+    const hasChildren = node.children?.length > 0;
+    const displayName = getNodeDisplayName(node);
+    const classNames = (node.classes || []).map(c => getStyleName(c, styleMap));
+    
+    const matchesSearch = explorerSearchTerm && (
+      (node.type || '').toLowerCase().includes(explorerSearchTerm) ||
+      (node.tag || '').toLowerCase().includes(explorerSearchTerm) ||
+      (displayName || '').toLowerCase().includes(explorerSearchTerm) ||
+      classNames.some(c => c.toLowerCase().includes(explorerSearchTerm))
+    );
+    
+    let html = `
+      <div class="tree-node ${matchesSearch ? 'tree-highlight' : ''}">
+        <div class="tree-node-header" data-node-id="${id}">
+          <span class="tree-toggle">${hasChildren ? (isExpanded ? '▼' : '▶') : ''}</span>
+          <span class="tree-tag">&lt;${node.tag || 'div'}&gt;</span>
+          <span class="tree-type">${node.type || ''}</span>
+          ${displayName ? `<span class="tree-name">"${escapeHtml(displayName)}"</span>` : ''}
+          ${classNames.length > 0 ? `<span class="tree-classes">.${classNames.slice(0, 3).join(' .')}${classNames.length > 3 ? ' +' + (classNames.length - 3) : ''}</span>` : ''}
+        </div>
+    `;
+    
+    if (isExpanded && hasChildren) {
+      html += '<div class="tree-children">';
+      node.children.forEach(childId => {
+        const child = nodeMap[childId];
+        if (child) html += renderNode(child, depth + 1);
+      });
+      html += '</div>';
+    }
+    
+    html += '</div>';
+    return html;
+  }
+  
+  if (els.explorerTreeContent) {
+    els.explorerTreeContent.innerHTML = rootNodes.map(n => renderNode(n)).join('') || '<p class="empty-msg">No elements found</p>';
+    
+    // Add click handlers
+    els.explorerTreeContent.querySelectorAll('.tree-node-header').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.nodeId;
+        if (explorerExpandedNodes.has(id)) {
+          explorerExpandedNodes.delete(id);
+        } else {
+          explorerExpandedNodes.add(id);
+        }
+        renderExplorerTree(nodes, nodeMap, styleMap);
+      });
+    });
+  }
+}
+
+function renderExplorerStyles(styles) {
+  const filteredStyles = explorerSearchTerm
+    ? styles.filter(s => s.name?.toLowerCase().includes(explorerSearchTerm))
+    : styles;
+  
+  if (els.explorerStylesContent) {
+    els.explorerStylesContent.innerHTML = filteredStyles.map(style => {
+      const id = 'style-' + style._id;
+      const isExpanded = explorerExpandedNodes.has(id);
+      const variantCount = style.variants ? Object.keys(style.variants).length : 0;
+      const pageCount = style.usedOnPages?.length || 0;
+      
+      let html = `
+        <div class="style-item">
+          <div class="style-header" data-style-id="${id}">
+            <span class="tree-toggle">${isExpanded ? '▼' : '▶'}</span>
+            <span class="style-name">.${escapeHtml(style.name || 'unnamed')}</span>
+            ${style.comb === '&' ? '<span class="style-badge">combo</span>' : ''}
+            ${variantCount > 0 ? `<span class="style-variants">${variantCount} variants</span>` : ''}
+            ${pageCount > 1 ? `<span class="style-pages">${pageCount} pages</span>` : ''}
+          </div>
+      `;
+      
+      if (isExpanded) {
+        const cssFormatted = style.styleLess
+          ? style.styleLess.split(';').filter(Boolean).map(s => s.trim()).join(';\n')
+          : '/* No styles */';
+        
+        html += `
+          <div class="style-details">
+            <div class="style-id">ID: ${style._id}</div>
+            <div class="style-css">${escapeHtml(cssFormatted)}</div>
+        `;
+        
+        if (variantCount > 0) {
+          html += '<div class="variant-section"><div class="variant-label">Variants:</div>';
+          Object.entries(style.variants).forEach(([name, data]) => {
+            const variantCss = data.styleLess
+              ? data.styleLess.split(';').filter(Boolean).map(s => s.trim()).join(';\n')
+              : '/* No styles */';
+            html += `
+              <div style="margin: 8px 0;">
+                <span class="variant-name">${escapeHtml(name)}:</span>
+                <div class="style-css">${escapeHtml(variantCss)}</div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+        
+        if (style.usedOnPages && style.usedOnPages.length > 0) {
+          html += `<div class="variant-section"><div class="variant-label">Used on: ${style.usedOnPages.join(', ')}</div></div>`;
+        }
+        
+        html += '</div>';
+      }
+      
+      html += '</div>';
+      return html;
+    }).join('') || '<p class="empty-msg">No styles found</p>';
+    
+    // Add click handlers
+    els.explorerStylesContent.querySelectorAll('.style-header').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.styleId;
+        if (explorerExpandedNodes.has(id)) {
+          explorerExpandedNodes.delete(id);
+        } else {
+          explorerExpandedNodes.add(id);
+        }
+        renderExplorerStyles(styles);
+      });
+    });
+  }
+}
+
+function renderExplorerRaw() {
+  if (!els.explorerRawContent) return;
+  
+  // Combine all raw data from collected pages
+  const combinedData = {
+    pages: collectedPages.map(p => ({
+      name: p.name,
+      data: p.rawData
+    }))
+  };
+  
+  els.explorerRawContent.innerHTML = `<pre class="raw-json">${escapeHtml(JSON.stringify(combinedData, null, 2))}</pre>`;
 }
 
 // ========== EXPORT FUNCTIONS ==========
