@@ -296,6 +296,32 @@
     /* Raw JSON */
     .raw-json { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: #888; line-height: 1.5; }
 
+    /* Issue Detail Modal */
+    .issue-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
+    .issue-modal { background: #1a1a1a; border-radius: 16px; width: 90%; max-width: 700px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; }
+    .issue-modal-header { padding: 20px 24px; border-bottom: 1px solid #252525; display: flex; justify-content: space-between; align-items: center; }
+    .issue-modal-header h3 { font-size: 18px; color: #fff; margin: 0; }
+    .issue-modal-close { background: none; border: none; color: #666; font-size: 24px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+    .issue-modal-close:hover { color: #fff; }
+    .issue-modal-content { padding: 24px; overflow-y: auto; flex: 1; }
+    .issue-modal-desc { font-size: 14px; color: #888; margin-bottom: 20px; line-height: 1.6; }
+    .issue-list { display: flex; flex-direction: column; gap: 12px; }
+    .issue-list-item { background: #252525; border-radius: 10px; padding: 16px; }
+    .issue-list-item-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+    .issue-list-item-class { font-family: 'SF Mono', Monaco, monospace; font-size: 14px; color: #4a9eff; background: #1a1a1a; padding: 4px 10px; border-radius: 6px; }
+    .issue-list-item-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+    .issue-list-item-badge.critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .issue-list-item-badge.high { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+    .issue-list-item-badge.medium { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .issue-list-item-badge.low { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .issue-list-item-detail { font-size: 13px; color: #888; }
+    .issue-list-item-css { margin-top: 10px; background: #0a0a0a; padding: 12px; border-radius: 8px; font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: #00d4aa; white-space: pre-wrap; max-height: 150px; overflow-y: auto; }
+    .issue-list-item-group { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    
+    .metric-issue { cursor: pointer; transition: color 0.2s; }
+    .metric-issue:hover { color: #4a9eff; }
+    .metric-issue::before { content: "•"; color: #ef4444; margin-right: 6px; }
+
     @media (max-width: 700px) {
       .score-header { flex-direction: column; align-items: center; text-align: center; }
       .stats-row { grid-template-columns: repeat(2, 1fr); }
@@ -514,6 +540,20 @@
       </div>
     </div>
 
+    <!-- Issue Detail Modal -->
+    <div id="issueModal" class="issue-modal-overlay hidden">
+      <div class="issue-modal">
+        <div class="issue-modal-header">
+          <h3 id="issueModalTitle">Issue Details</h3>
+          <button class="issue-modal-close" id="issueModalClose">&times;</button>
+        </div>
+        <div class="issue-modal-content">
+          <p class="issue-modal-desc" id="issueModalDesc"></p>
+          <div class="issue-list" id="issueModalList"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Script Section -->
     <div class="script-section">
       <h3>📝 How to copy from Webflow</h3>
@@ -656,10 +696,20 @@ const elementIds = [
 ];
 elementIds.forEach(id => els[id] = document.getElementById(id));
 
+// Issue modal elements
+els.issueModal = document.getElementById('issueModal');
+els.issueModalTitle = document.getElementById('issueModalTitle');
+els.issueModalDesc = document.getElementById('issueModalDesc');
+els.issueModalList = document.getElementById('issueModalList');
+els.issueModalClose = document.getElementById('issueModalClose');
+
 // Explorer state
 let explorerExpandedNodes = new Set();
 let explorerActiveTab = 'tree';
 let explorerSearchTerm = '';
+
+// Issue detail data mapping
+const issueDataMap = new Map();
 
 // ========== EVENT LISTENERS ==========
 
@@ -692,6 +742,12 @@ els.explorerSearch?.addEventListener('input', (e) => {
   renderExplorer();
 });
 
+// Issue modal events
+els.issueModalClose?.addEventListener('click', hideIssueModal);
+els.issueModal?.addEventListener('click', (e) => {
+  if (e.target === els.issueModal) hideIssueModal();
+});
+
 // ========== UTILITY FUNCTIONS ==========
 
 function showToast(msg, isError = false) {
@@ -711,6 +767,29 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// ========== ISSUE MODAL ==========
+
+function showIssueModal(issueType) {
+  const data = issueDataMap.get(issueType);
+  if (!data) return;
+  
+  els.issueModalTitle.textContent = data.title;
+  els.issueModalDesc.textContent = data.description;
+  els.issueModalList.innerHTML = data.render();
+  els.issueModal.classList.remove('hidden');
+}
+
+function hideIssueModal() {
+  els.issueModal.classList.add('hidden');
+}
+
+// Make showIssueModal globally accessible for onclick handlers
+window.showIssueModal = showIssueModal;
+
+function registerIssueData(type, title, description, renderFn) {
+  issueDataMap.set(type, { title, description, render: renderFn });
 }
 
 // ========== PAGE MANAGEMENT ==========
@@ -2648,8 +2727,8 @@ function displayResults() {
     
     let issuesHtml = '';
     if (m.issues && m.issues.length > 0) {
-      issuesHtml = `<div class="metric-issues">${m.issues.slice(0, 2).map(i => 
-        `<div class="metric-issue">${escapeHtml(i)}</div>`
+      issuesHtml = `<div class="metric-issues">${m.issues.slice(0, 2).map((issue, idx) => 
+        `<div class="metric-issue" data-issue-type="${key}-${idx}" onclick="showIssueModal('${key}-${idx}')">${escapeHtml(issue)}</div>`
       ).join('')}</div>`;
     }
     
@@ -2768,6 +2847,429 @@ function displayResults() {
   const rootNodes = findRootNodes(r.aggregated.allNodes, r.aggregated.nodeMap);
   rootNodes.forEach(n => explorerExpandedNodes.add('node-' + n._id));
   renderExplorer();
+  
+  // Register issue data for clickable details
+  registerAllIssueData(r);
+}
+
+function registerAllIssueData(r) {
+  issueDataMap.clear();
+  
+  const { metrics, findings } = r;
+  
+  // Naming issues
+  if (metrics.naming.issues.length > 0) {
+    metrics.naming.issues.forEach((issue, idx) => {
+      if (issue.includes('numbered classes with identical CSS')) {
+        registerIssueData(`naming-${idx}`, 
+          'Numbered Classes with Identical CSS',
+          'These auto-generated classes have the same CSS properties. They should be consolidated into a single, well-named class.',
+          () => {
+            const groups = metrics.naming.data.numberedWithSameCss || [];
+            if (groups.length === 0) return '<p class="empty-msg">No details available</p>';
+            return groups.map(group => `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge high">Identical CSS</span>
+                </div>
+                <div class="issue-list-item-group">
+                  ${group.map(name => `<span class="issue-list-item-class">.${escapeHtml(name)}</span>`).join('')}
+                </div>
+                <div class="issue-list-item-detail" style="margin-top: 10px;">These ${group.length} classes have exactly the same styles. Merge into one semantic class.</div>
+              </div>
+            `).join('');
+          }
+        );
+      } else if (issue.includes('copied classes')) {
+        registerIssueData(`naming-${idx}`,
+          'Copied Classes (Critical)',
+          'Classes ending with "-copy" indicate duplicated elements. These create maintenance nightmares and should be renamed or consolidated.',
+          () => {
+            const critical = metrics.naming.data.autoGenerated.critical || [];
+            if (critical.length === 0) return '<p class="empty-msg">No details available</p>';
+            return critical.map(item => `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-class">.${escapeHtml(item.name)}</span>
+                  <span class="issue-list-item-badge critical">Critical</span>
+                </div>
+                <div class="issue-list-item-detail">${escapeHtml(item.desc)}</div>
+              </div>
+            `).join('');
+          }
+        );
+      } else if (issue.includes('numbered auto-classes')) {
+        registerIssueData(`naming-${idx}`,
+          'Numbered Auto-Generated Classes',
+          'Classes like "div-block-2" or "section-3" indicate the developer didn\'t name elements intentionally. These should be given semantic names.',
+          () => {
+            const high = metrics.naming.data.autoGenerated.high || [];
+            if (high.length === 0) return '<p class="empty-msg">No details available</p>';
+            return high.map(item => `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-class">.${escapeHtml(item.name)}</span>
+                  <span class="issue-list-item-badge high">High</span>
+                </div>
+                <div class="issue-list-item-detail">${escapeHtml(item.desc)}</div>
+              </div>
+            `).join('');
+          }
+        );
+      } else if (issue.includes('duplicate styles')) {
+        registerIssueData(`naming-${idx}`,
+          'Duplicate Styles',
+          'Different class names with identical CSS. These should be merged to reduce complexity.',
+          () => {
+            const dupes = metrics.naming.data.duplicateCss || [];
+            if (dupes.length === 0) return '<p class="empty-msg">No details available</p>';
+            return dupes.slice(0, 10).map(dup => `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge medium">${dup.names.length} classes</span>
+                </div>
+                <div class="issue-list-item-group">
+                  ${dup.names.map(name => `<span class="issue-list-item-class">.${escapeHtml(name)}</span>`).join('')}
+                </div>
+                <div class="issue-list-item-css">${escapeHtml(dup.css)}...</div>
+              </div>
+            `).join('');
+          }
+        );
+      } else {
+        // Generic fallback
+        registerIssueData(`naming-${idx}`, 'Naming Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
+      }
+    });
+  }
+  
+  // Style consistency issues
+  if (metrics.styleConsistency.issues.length > 0) {
+    metrics.styleConsistency.issues.forEach((issue, idx) => {
+      if (issue.includes('near-duplicate color')) {
+        registerIssueData(`styleConsistency-${idx}`,
+          'Near-Duplicate Colors',
+          'Colors that are almost identical but not the same. This usually indicates a missing design system or accidental inconsistency.',
+          () => {
+            const pairs = metrics.styleConsistency.data.nearDuplicateColors || [];
+            if (pairs.length === 0) return '<p class="empty-msg">No details available</p>';
+            return pairs.map(pair => `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <div style="width: 32px; height: 32px; border-radius: 6px; background: ${pair.color1.value}; border: 1px solid #333;"></div>
+                    <span style="color: #666;">vs</span>
+                    <div style="width: 32px; height: 32px; border-radius: 6px; background: ${pair.color2.value}; border: 1px solid #333;"></div>
+                  </div>
+                  <span class="issue-list-item-badge medium">${pair.percentage}% similar</span>
+                </div>
+                <div class="issue-list-item-detail">
+                  <code>${pair.color1.value}</code> vs <code>${pair.color2.value}</code><br>
+                  Used in: ${[...pair.color1.classes, ...pair.color2.classes].slice(0, 4).map(c => '.' + c).join(', ')}
+                </div>
+              </div>
+            `).join('');
+          }
+        );
+      } else if (issue.includes('spacing off-scale') || issue.includes('Inconsistent')) {
+        registerIssueData(`styleConsistency-${idx}`,
+          'Inconsistent Spacing',
+          'Spacing values that don\'t follow a consistent scale. Professional projects use 4px or 8px increments.',
+          () => {
+            const nearDupes = metrics.styleConsistency.data.spacingAnalysis.nearDuplicates || [];
+            const offScale = metrics.styleConsistency.data.spacingAnalysis.offScaleValues || [];
+            let html = '';
+            if (nearDupes.length > 0) {
+              html += '<div class="issue-list-item"><div class="issue-list-item-header"><span class="issue-list-item-badge medium">Near-duplicate spacing</span></div>';
+              html += '<div class="issue-list-item-detail">' + nearDupes.map(s => `${s.v1}px vs ${s.v2}px`).join(', ') + '</div></div>';
+            }
+            if (offScale.length > 0) {
+              html += '<div class="issue-list-item"><div class="issue-list-item-header"><span class="issue-list-item-badge low">Off-scale values</span></div>';
+              html += '<div class="issue-list-item-detail">' + offScale.map(v => `${v}px`).join(', ') + '</div></div>';
+            }
+            return html || '<p class="empty-msg">No details available</p>';
+          }
+        );
+      } else if (issue.includes('CSS variables')) {
+        registerIssueData(`styleConsistency-${idx}`,
+          'No CSS Variables',
+          'The project doesn\'t use CSS variables for colors. Variables make global changes much easier.',
+          () => `<div class="issue-list-item">
+            <div class="issue-list-item-detail">
+              Create CSS variables for your main brand colors. This allows you to update colors site-wide from one place.<br><br>
+              <strong>Example:</strong><br>
+              <code>--color-primary: #4a9eff;</code><br>
+              <code>--color-text: #e0e0e0;</code>
+            </div>
+          </div>`
+        );
+      } else {
+        registerIssueData(`styleConsistency-${idx}`, 'Style Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
+      }
+    });
+  }
+  
+  // Typography issues
+  if (metrics.typography.issues.length > 0) {
+    metrics.typography.issues.forEach((issue, idx) => {
+      if (issue.includes('font sizes') || issue.includes('font families')) {
+        registerIssueData(`typography-${idx}`,
+          'Typography Inconsistency',
+          'Too many font sizes or families indicate a lack of type system. Professional designs use 6-8 sizes maximum.',
+          () => {
+            const typo = metrics.typography.data.typography;
+            let html = '<div class="issue-list-item">';
+            if (typo.families.size > 0) {
+              html += `<div class="issue-list-item-header"><span class="issue-list-item-badge medium">${typo.families.size} Font Families</span></div>`;
+              html += `<div class="issue-list-item-detail">${Array.from(typo.families).join(', ')}</div>`;
+            }
+            if (typo.sizes.length > 0) {
+              const uniqueSizes = [...new Set(typo.sizes.map(s => s.value))].sort((a, b) => a - b);
+              html += `<div style="margin-top: 12px;"><strong>${uniqueSizes.length} unique font sizes:</strong></div>`;
+              html += `<div class="issue-list-item-detail">${uniqueSizes.map(s => s + 'px').join(', ')}</div>`;
+            }
+            html += '</div>';
+            return html;
+          }
+        );
+      } else if (issue.includes('type scale')) {
+        registerIssueData(`typography-${idx}`,
+          'No Type Scale',
+          'Font sizes don\'t follow a consistent ratio. A type scale (like 1.25x) creates visual harmony.',
+          () => `<div class="issue-list-item">
+            <div class="issue-list-item-detail">
+              Consider using a type scale with consistent ratios:<br><br>
+              <strong>1.25 scale example:</strong> 12px → 15px → 19px → 24px → 30px<br>
+              <strong>1.333 scale example:</strong> 12px → 16px → 21px → 28px → 37px
+            </div>
+          </div>`
+        );
+      } else {
+        registerIssueData(`typography-${idx}`, 'Typography Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
+      }
+    });
+  }
+  
+  // Architecture issues
+  if (metrics.architecture.issues.length > 0) {
+    metrics.architecture.issues.forEach((issue, idx) => {
+      if (issue.includes('nesting depth')) {
+        registerIssueData(`architecture-${idx}`,
+          'Deep Nesting',
+          'Elements are nested too deeply. This makes the project hard to navigate and maintain. Aim for 6-8 levels maximum.',
+          () => {
+            const nesting = metrics.architecture.data.nestingAnalysis;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge high">Max depth: ${nesting.maxDepth} levels</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Recommended maximum: 6-8 levels.<br>
+                Deep nesting often indicates workarounds or poor structure planning.
+              </div>
+            </div>`;
+          }
+        );
+      } else if (issue.includes('empty wrapper')) {
+        registerIssueData(`architecture-${idx}`,
+          'Empty Wrapper Divs',
+          'Divs with no classes and only one child add unnecessary complexity. They can usually be removed.',
+          () => {
+            const count = metrics.architecture.data.nestingAnalysis.emptyWrappers;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge medium">${count} empty wrappers</span>
+              </div>
+              <div class="issue-list-item-detail">
+                These are divs that have no class applied and contain only a single child element.<br>
+                They usually serve no purpose and can be removed to flatten the structure.
+              </div>
+            </div>`;
+          }
+        );
+      } else if (issue.includes('unlinked symbols')) {
+        registerIssueData(`architecture-${idx}`,
+          'Unlinked Symbols',
+          'Components that were created then "unlinked" become tech debt. Changes don\'t propagate, defeating the purpose of components.',
+          () => {
+            const count = r.aggregated.unlinkedSymbols;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge high">${count} unlinked symbols</span>
+              </div>
+              <div class="issue-list-item-detail">
+                When you unlink a symbol, it becomes a regular element. Any future updates to the original symbol won't apply.<br><br>
+                Consider re-linking these or creating new symbols if the original was deleted.
+              </div>
+            </div>`;
+          }
+        );
+      } else {
+        registerIssueData(`architecture-${idx}`, 'Architecture Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
+      }
+    });
+  }
+  
+  // Maintainability issues
+  if (metrics.maintainability.issues.length > 0) {
+    metrics.maintainability.issues.forEach((issue, idx) => {
+      if (issue.includes('button') && issue.includes('variant')) {
+        registerIssueData(`maintainability-${idx}`,
+          'Missing Button Variants',
+          'A button class exists but has no combo classes for variants. Buttons typically need primary, secondary, and size variations.',
+          () => `<div class="issue-list-item">
+            <div class="issue-list-item-detail">
+              Create combo classes for button variants:<br><br>
+              <code>.button.is-primary</code><br>
+              <code>.button.is-secondary</code><br>
+              <code>.button.is-large</code><br>
+              <code>.button.is-small</code>
+            </div>
+          </div>`
+        );
+      } else if (issue.includes('empty classes')) {
+        registerIssueData(`maintainability-${idx}`,
+          'Empty Classes',
+          'Classes that exist but have no CSS applied. Unless they\'re JavaScript hooks (js-*), they add clutter.',
+          () => {
+            const count = metrics.maintainability.data.emptyClasses;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge medium">${count} empty classes</span>
+              </div>
+              <div class="issue-list-item-detail">
+                These classes have no styles. If they're not used for JavaScript targeting, consider removing them.
+              </div>
+            </div>`;
+          }
+        );
+      } else if (issue.includes('single page only')) {
+        registerIssueData(`maintainability-${idx}`,
+          'Low Class Reuse',
+          'Many classes are only used on one page. This suggests duplication instead of a reusable system.',
+          () => {
+            const ratio = metrics.maintainability.data.reuseAnalysis.orphanRatio;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge medium">${Math.round(ratio * 100)}% single-page classes</span>
+              </div>
+              <div class="issue-list-item-detail">
+                In a well-architected project, most classes should be reusable across pages.<br>
+                High orphan ratios indicate page-specific styling instead of a system.
+              </div>
+            </div>`;
+          }
+        );
+      } else {
+        registerIssueData(`maintainability-${idx}`, 'Maintainability Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
+      }
+    });
+  }
+  
+  // Technical issues
+  if (metrics.technical.issues.length > 0) {
+    metrics.technical.issues.forEach((issue, idx) => {
+      if (issue.includes('absolute positioning')) {
+        registerIssueData(`technical-${idx}`,
+          'Excessive Absolute Positioning',
+          'Too many elements use position:absolute. This often indicates layout workarounds rather than proper flexbox/grid usage.',
+          () => {
+            const count = metrics.technical.data.positionAnalysis.absoluteCount;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge high">${count} absolute elements</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Absolute positioning should be used sparingly for overlays, badges, and decorative elements.<br>
+                High counts suggest the developer is fighting the layout instead of using flexbox/grid properly.
+              </div>
+            </div>`;
+          }
+        );
+      } else if (issue.includes('Z-index chaos')) {
+        registerIssueData(`technical-${idx}`,
+          'Z-Index Chaos',
+          'Z-index values are unorganized with extreme values. This leads to stacking issues and "z-index wars".',
+          () => {
+            const zValues = metrics.technical.data.positionAnalysis.zIndexValues;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge high">Z-index values</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Current values: ${zValues.join(', ')}<br><br>
+                <strong>Recommended system:</strong><br>
+                1-10: Base elements<br>
+                10-20: Dropdowns, tooltips<br>
+                20-30: Modals<br>
+                30-40: Notifications<br>
+                Values like 999 or 9999 indicate problems.
+              </div>
+            </div>`;
+          }
+        );
+      } else if (issue.includes('overflow:hidden')) {
+        registerIssueData(`technical-${idx}`,
+          'Excessive Overflow Hidden',
+          'Many elements have overflow:hidden. This is often used to hide broken layouts or unwanted scrollbars.',
+          () => {
+            const count = metrics.technical.data.positionAnalysis.overflowHiddenCount;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge medium">${count} overflow:hidden</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Overflow hidden should be intentional, not a band-aid. Common misuses:<br>
+                • Hiding horizontal scroll caused by elements too wide<br>
+                • Hiding content that "shouldn't" be visible<br>
+                • Working around animation glitches
+              </div>
+            </div>`;
+          }
+        );
+      } else if (issue.includes('interaction')) {
+        registerIssueData(`technical-${idx}`,
+          'Interaction Complexity',
+          'Many interactions exist in this project. Each interaction adds maintenance overhead.',
+          () => {
+            const count = metrics.technical.data.interactionCount;
+            return `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge medium">${count} interactions</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Interactions add visual polish but require maintenance:<br>
+                • Each interaction must be tested across browsers<br>
+                • Changes to elements can break animations<br>
+                • Complex timelines are hard to modify<br><br>
+                Consider reusing interactions where possible.
+              </div>
+            </div>`;
+          }
+        );
+      } else if (issue.includes('breakpoint')) {
+        registerIssueData(`technical-${idx}`,
+          'Breakpoint Inconsistencies',
+          'Responsive styles don\'t follow predictable patterns. Mobile spacing shouldn\'t exceed desktop spacing.',
+          () => {
+            const issues = metrics.technical.data.breakpointAnalysis.breakpointIssues || [];
+            if (issues.length === 0) return '<p class="empty-msg">No specific issues recorded</p>';
+            return issues.slice(0, 8).map(issue => `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-class">.${escapeHtml(issue.class)}</span>
+                  <span class="issue-list-item-badge medium">${escapeHtml(issue.breakpoint)}</span>
+                </div>
+                <div class="issue-list-item-detail">${escapeHtml(issue.issue)}</div>
+              </div>
+            `).join('');
+          }
+        );
+      } else {
+        registerIssueData(`technical-${idx}`, 'Technical Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
+      }
+    });
+  }
 }
 
 function displayFindings(findings) {
