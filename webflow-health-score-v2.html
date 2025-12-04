@@ -1183,18 +1183,42 @@ function detectNamingConventions(classNames) {
 }
 
 function findNumberedWithSameCss(styles) {
-  const numbered = styles.filter(s => /\d+$/.test(s.name));
+  // Group by normalized CSS
+  const cssToStyles = new Map();
+  
+  styles.forEach(style => {
+    if (style.styleLess && style.styleLess.length > 5) {
+      const normalized = normalizeCss(style.styleLess);
+      if (!cssToStyles.has(normalized)) {
+        cssToStyles.set(normalized, []);
+      }
+      // Only add if not already in the list (avoid duplicates from multi-page)
+      const existing = cssToStyles.get(normalized);
+      if (!existing.some(s => s.name === style.name)) {
+        existing.push({
+          name: style.name,
+          id: style._id,
+          isCombo: style.comb === '&',
+          css: style.styleLess
+        });
+      }
+    }
+  });
+  
+  // Filter to groups with multiple classes that have numbered patterns
   const groups = [];
   
-  numbered.forEach(style => {
-    const baseName = style.name.replace(/-?\d+$/, '');
-    const similar = numbered.filter(s => 
-      s._id !== style._id && 
-      s.name.replace(/-?\d+$/, '') === baseName &&
-      s.styleLess === style.styleLess
-    );
-    if (similar.length > 0 && !groups.some(g => g.includes(style.name))) {
-      groups.push([style.name, ...similar.map(s => s.name)]);
+  cssToStyles.forEach((styleGroup, css) => {
+    if (styleGroup.length > 1) {
+      // Check if any have numbered patterns
+      const hasNumbered = styleGroup.some(s => /[-_]?\d+$/.test(s.name) || /-copy/.test(s.name));
+      if (hasNumbered) {
+        groups.push({
+          styles: styleGroup,
+          css: css.substring(0, 150),
+          count: styleGroup.length
+        });
+      }
     }
   });
   
@@ -1407,19 +1431,23 @@ function extractSpacing(styles) {
       if (!values.has(key)) {
         values.set(key, { value: pxValue, original: `${value}${unit}`, classes: [], properties: [] });
       }
-      values.get(key).classes.push(style.name);
-      values.get(key).properties.push(property);
+      const entry = values.get(key);
+      if (!entry.classes.includes(style.name)) {
+        entry.classes.push(style.name);
+      }
+      entry.properties.push({ property, class: style.name });
     }
   });
   
   return {
     all: Array.from(values.values()),
-    unique: Array.from(values.keys()).map(k => values.get(k).value).sort((a, b) => a - b)
+    unique: Array.from(values.keys()).map(k => values.get(k).value).sort((a, b) => a - b),
+    byValue: values
   };
 }
 
 function analyzeSpacingPatterns(spacing) {
-  const { unique, all } = spacing;
+  const { unique, all, byValue } = spacing;
   
   // Find best matching scale
   let bestScale = null;
@@ -1437,13 +1465,33 @@ function analyzeSpacingPatterns(spacing) {
     !Object.values(SPACING_SCALES).some(scale => scale.includes(Math.round(v)))
   );
   
+  // Get classes for off-scale values
+  const offScaleWithClasses = offScaleValues.map(v => {
+    const key = `${v}px`;
+    const data = byValue?.get(key);
+    return {
+      value: v,
+      classes: data?.classes || []
+    };
+  });
+  
   // Find near-duplicate spacing (e.g., 15px and 16px)
   const nearDuplicates = [];
   for (let i = 0; i < unique.length; i++) {
     for (let j = i + 1; j < unique.length; j++) {
       const diff = Math.abs(unique[i] - unique[j]);
       if (diff > 0 && diff <= 2 && unique[i] > 10) { // Only flag for larger values
-        nearDuplicates.push({ v1: unique[i], v2: unique[j], diff });
+        const key1 = `${unique[i]}px`;
+        const key2 = `${unique[j]}px`;
+        const data1 = byValue?.get(key1);
+        const data2 = byValue?.get(key2);
+        nearDuplicates.push({ 
+          v1: unique[i], 
+          v2: unique[j], 
+          diff,
+          classes1: data1?.classes || [],
+          classes2: data2?.classes || []
+        });
       }
     }
   }
@@ -1453,6 +1501,7 @@ function analyzeSpacingPatterns(spacing) {
     onScaleRatio: bestOnScale / (unique.length || 1),
     offScaleRatio: offScaleValues.length / (unique.length || 1),
     offScaleValues,
+    offScaleWithClasses,
     nearDuplicates
   };
 }
@@ -1614,7 +1663,7 @@ function analyzeArchitecture(aggregated, frameworkConfig) {
   let score = 20;
   
   // 1. Nesting depth analysis
-  const nestingAnalysis = analyzeNestingDepth(allNodes, nodeMap);
+  const nestingAnalysis = analyzeNestingDepth(allNodes, nodeMap, allStyles);
   
   if (nestingAnalysis.maxDepth > 10) {
     score -= 4;
@@ -1671,29 +1720,59 @@ function analyzeArchitecture(aggregated, frameworkConfig) {
   };
 }
 
-function analyzeNestingDepth(nodes, nodeMap) {
+function analyzeNestingDepth(nodes, nodeMap, allStyles) {
   let maxDepth = 0;
   let deepNodes = [];
   let emptyWrappers = 0;
+  const emptyWrappersList = [];
   
-  function getDepth(nodeId, current = 0) {
+  // Build style map for class name lookups
+  const styleMap = {};
+  if (allStyles) {
+    allStyles.forEach(s => styleMap[s._id] = s);
+  }
+  
+  function getDepth(nodeId, current = 0, path = []) {
     const node = nodeMap[nodeId];
     if (!node) return current;
     
+    // Get class names for this node
+    const classNames = (node.classes || []).map(c => {
+      const style = styleMap[c];
+      return style?.name || c;
+    });
+    
+    const nodeInfo = {
+      id: nodeId,
+      type: node.type,
+      tag: node.tag,
+      classes: classNames,
+      depth: current,
+      path: [...path, { type: node.type, classes: classNames }]
+    };
+    
     if (current > maxDepth) {
       maxDepth = current;
+      deepNodes = [nodeInfo];
+    } else if (current === maxDepth && current > 6) {
+      deepNodes.push(nodeInfo);
     }
     
-    // Check for empty wrapper (div-block with single child)
+    // Check for empty wrapper (div-block with single child and no classes)
     if (node.type === 'Block' && 
         (!node.classes || node.classes.length === 0) && 
         node.children?.length === 1) {
       emptyWrappers++;
+      emptyWrappersList.push({
+        id: nodeId,
+        depth: current,
+        childType: nodeMap[node.children[0]]?.type
+      });
     }
     
     if (node.children) {
       node.children.forEach(childId => {
-        getDepth(childId, current + 1);
+        getDepth(childId, current + 1, nodeInfo.path);
       });
     }
     
@@ -1705,9 +1784,9 @@ function analyzeNestingDepth(nodes, nodeMap) {
   nodes.forEach(n => (n.children || []).forEach(c => childIds.add(c)));
   const rootNodes = nodes.filter(n => !childIds.has(n._id));
   
-  rootNodes.forEach(root => getDepth(root._id, 0));
+  rootNodes.forEach(root => getDepth(root._id, 0, []));
   
-  return { maxDepth, deepNodes, emptyWrappers };
+  return { maxDepth, deepNodes: deepNodes.slice(0, 10), emptyWrappers, emptyWrappersList: emptyWrappersList.slice(0, 20) };
 }
 
 function analyzeStructureConsistency(pages) {
@@ -1796,7 +1875,8 @@ function analyzeMaintainability(aggregated, frameworkConfig) {
   // 3. Empty/orphan classes
   const emptyClasses = allStyles.filter(s => !s.styleLess || s.styleLess.trim().length === 0);
   const jsHooks = emptyClasses.filter(s => s.name.startsWith('js-') || s.name.startsWith('w-'));
-  const trueEmpty = emptyClasses.length - jsHooks.length;
+  const trueEmptyClasses = emptyClasses.filter(s => !s.name.startsWith('js-') && !s.name.startsWith('w-'));
+  const trueEmpty = trueEmptyClasses.length;
   
   if (trueEmpty > 10) {
     score -= 2;
@@ -1824,7 +1904,7 @@ function analyzeMaintainability(aggregated, frameworkConfig) {
     max: 15,
     detail: `${Math.round((1 - reuseAnalysis.orphanRatio) * 100)}% reuse, ${comboAnalysis.comboCount} combos`,
     issues,
-    data: { reuseAnalysis, comboAnalysis, emptyClasses: trueEmpty, globalRisk }
+    data: { reuseAnalysis, comboAnalysis, emptyClasses: trueEmpty, emptyClassList: trueEmptyClasses.map(s => s.name), globalRisk }
   };
 }
 
@@ -2863,19 +2943,28 @@ function registerAllIssueData(r) {
       if (issue.includes('numbered classes with identical CSS')) {
         registerIssueData(`naming-${idx}`, 
           'Numbered Classes with Identical CSS',
-          'These auto-generated classes have the same CSS properties. They should be consolidated into a single, well-named class.',
+          'These classes have the same CSS properties. If they\'re utility classes used as combos, consider if that\'s intentional. Otherwise, consolidate into a single class.',
           () => {
             const groups = metrics.naming.data.numberedWithSameCss || [];
             if (groups.length === 0) return '<p class="empty-msg">No details available</p>';
             return groups.map(group => `
               <div class="issue-list-item">
                 <div class="issue-list-item-header">
-                  <span class="issue-list-item-badge high">Identical CSS</span>
+                  <span class="issue-list-item-badge high">${group.count} classes with identical CSS</span>
                 </div>
                 <div class="issue-list-item-group">
-                  ${group.map(name => `<span class="issue-list-item-class">.${escapeHtml(name)}</span>`).join('')}
+                  ${group.styles.map(s => `
+                    <span class="issue-list-item-class" style="${s.isCombo ? 'border: 1px solid #fbbf24;' : ''}">
+                      .${escapeHtml(s.name)}${s.isCombo ? ' <small style="color:#fbbf24">(combo)</small>' : ''}
+                    </span>
+                  `).join('')}
                 </div>
-                <div class="issue-list-item-detail" style="margin-top: 10px;">These ${group.length} classes have exactly the same styles. Merge into one semantic class.</div>
+                <div class="issue-list-item-css">${escapeHtml(group.css)}${group.css.length >= 150 ? '...' : ''}</div>
+                <div class="issue-list-item-detail" style="margin-top: 10px;">
+                  ${group.styles.some(s => s.isCombo) 
+                    ? '⚠️ Some are combo classes - check if utility class is being misused' 
+                    : 'Consider merging into one semantic class'}
+                </div>
               </div>
             `).join('');
           }
@@ -2977,15 +3066,32 @@ function registerAllIssueData(r) {
           'Spacing values that don\'t follow a consistent scale. Professional projects use 4px or 8px increments.',
           () => {
             const nearDupes = metrics.styleConsistency.data.spacingAnalysis.nearDuplicates || [];
-            const offScale = metrics.styleConsistency.data.spacingAnalysis.offScaleValues || [];
+            const offScale = metrics.styleConsistency.data.spacingAnalysis.offScaleWithClasses || [];
             let html = '';
             if (nearDupes.length > 0) {
-              html += '<div class="issue-list-item"><div class="issue-list-item-header"><span class="issue-list-item-badge medium">Near-duplicate spacing</span></div>';
-              html += '<div class="issue-list-item-detail">' + nearDupes.map(s => `${s.v1}px vs ${s.v2}px`).join(', ') + '</div></div>';
+              html += nearDupes.map(s => `
+                <div class="issue-list-item">
+                  <div class="issue-list-item-header">
+                    <span class="issue-list-item-badge medium">Near-duplicate: ${s.v1}px vs ${s.v2}px</span>
+                  </div>
+                  <div class="issue-list-item-detail">
+                    <strong>${s.v1}px used in:</strong> ${s.classes1.slice(0, 5).map(c => '.' + c).join(', ')}${s.classes1.length > 5 ? ` +${s.classes1.length - 5} more` : ''}<br>
+                    <strong>${s.v2}px used in:</strong> ${s.classes2.slice(0, 5).map(c => '.' + c).join(', ')}${s.classes2.length > 5 ? ` +${s.classes2.length - 5} more` : ''}
+                  </div>
+                </div>
+              `).join('');
             }
             if (offScale.length > 0) {
-              html += '<div class="issue-list-item"><div class="issue-list-item-header"><span class="issue-list-item-badge low">Off-scale values</span></div>';
-              html += '<div class="issue-list-item-detail">' + offScale.map(v => `${v}px`).join(', ') + '</div></div>';
+              html += `<div class="issue-list-item">
+                <div class="issue-list-item-header"><span class="issue-list-item-badge low">Off-scale values</span></div>
+                <div class="issue-list-item-detail">
+                  ${offScale.slice(0, 10).map(item => `
+                    <div style="margin: 8px 0; padding: 8px; background: #1a1a1a; border-radius: 6px;">
+                      <strong>${item.value}px</strong> — ${item.classes.slice(0, 4).map(c => '.' + c).join(', ')}${item.classes.length > 4 ? ` +${item.classes.length - 4} more` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`;
             }
             return html || '<p class="empty-msg">No details available</p>';
           }
@@ -3059,7 +3165,7 @@ function registerAllIssueData(r) {
           'Elements are nested too deeply. This makes the project hard to navigate and maintain. Aim for 6-8 levels maximum.',
           () => {
             const nesting = metrics.architecture.data.nestingAnalysis;
-            return `<div class="issue-list-item">
+            let html = `<div class="issue-list-item">
               <div class="issue-list-item-header">
                 <span class="issue-list-item-badge high">Max depth: ${nesting.maxDepth} levels</span>
               </div>
@@ -3068,6 +3174,32 @@ function registerAllIssueData(r) {
                 Deep nesting often indicates workarounds or poor structure planning.
               </div>
             </div>`;
+            
+            if (nesting.deepNodes && nesting.deepNodes.length > 0) {
+              html += `<div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge medium">Deepest elements</span>
+                </div>
+                <div class="issue-list-item-detail">
+                  ${nesting.deepNodes.slice(0, 5).map(node => `
+                    <div style="margin: 8px 0; padding: 10px; background: #1a1a1a; border-radius: 6px;">
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="color: #4a9eff;">&lt;${node.tag || 'div'}&gt;</span>
+                        <span style="color: #a78bfa;">${node.type}</span>
+                        ${node.classes.length > 0 ? `<span style="color: #00d4aa;">.${node.classes.join(' .')}</span>` : '<span style="color: #666;">(no class)</span>'}
+                      </div>
+                      ${node.path ? `
+                        <div style="margin-top: 8px; font-size: 11px; color: #666;">
+                          Path: ${node.path.slice(-4).map(p => p.classes.length > 0 ? '.' + p.classes[0] : p.type).join(' → ')}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`;
+            }
+            
+            return html;
           }
         );
       } else if (issue.includes('empty wrapper')) {
@@ -3133,6 +3265,7 @@ function registerAllIssueData(r) {
           'Classes that exist but have no CSS applied. Unless they\'re JavaScript hooks (js-*), they add clutter.',
           () => {
             const count = metrics.maintainability.data.emptyClasses;
+            const classList = metrics.maintainability.data.emptyClassList || [];
             return `<div class="issue-list-item">
               <div class="issue-list-item-header">
                 <span class="issue-list-item-badge medium">${count} empty classes</span>
@@ -3140,6 +3273,12 @@ function registerAllIssueData(r) {
               <div class="issue-list-item-detail">
                 These classes have no styles. If they're not used for JavaScript targeting, consider removing them.
               </div>
+              ${classList.length > 0 ? `
+                <div class="issue-list-item-group" style="margin-top: 12px;">
+                  ${classList.slice(0, 30).map(name => `<span class="issue-list-item-class">.${escapeHtml(name)}</span>`).join('')}
+                  ${classList.length > 30 ? `<span class="issue-list-item-class" style="background: #333;">+${classList.length - 30} more</span>` : ''}
+                </div>
+              ` : ''}
             </div>`;
           }
         );
