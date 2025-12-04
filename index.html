@@ -332,7 +332,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.8</span></h1>
+      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.9</span></h1>
       <p>Professional analysis for retainer evaluation and maintainability assessment</p>
     </header>
 
@@ -1853,7 +1853,7 @@ function analyzeComponents(aggregated, frameworkConfig) {
   return {
     score: Math.max(0, score),
     max: 15,
-    detail: `${componentAnalysis.totalComponents} components, ${patternAnalysis.shouldBeComponents.length} repeated patterns`,
+    detail: `${componentAnalysis.uniqueComponents} unique components, ${componentAnalysis.totalComponents} instances`,
     issues,
     data: {
       navAnalysis,
@@ -1876,6 +1876,44 @@ function detectNavigation(allNodes, nodeMap, styleMap, pages) {
     structure: null
   };
   
+  // First, find all Symbol nodes and their contents
+  const symbolNodes = new Set();
+  const symbolContents = new Map(); // symbolId -> child node IDs
+  
+  allNodes.forEach(node => {
+    if (node.type === 'Symbol' || node.type === 'CommerceSymbol' || node.symbolId) {
+      symbolNodes.add(node._id);
+      // Track what's inside this symbol
+      if (node.children) {
+        node.children.forEach(childId => {
+          symbolContents.set(childId, node._id);
+        });
+      }
+    }
+  });
+  
+  // Helper to check if a node is inside a symbol (at any depth)
+  function isInsideSymbol(nodeId, depth = 5) {
+    if (depth <= 0) return false;
+    if (symbolNodes.has(nodeId)) return true;
+    if (symbolContents.has(nodeId)) return true;
+    
+    // Check if any ancestor is a symbol
+    const node = nodeMap[nodeId];
+    if (!node) return false;
+    
+    // Look for parent by checking who has this node as a child
+    for (const potentialParent of allNodes) {
+      if (potentialParent.children?.includes(nodeId)) {
+        if (symbolNodes.has(potentialParent._id) || potentialParent.type === 'Symbol' || potentialParent.symbolId) {
+          return true;
+        }
+        return isInsideSymbol(potentialParent._id, depth - 1);
+      }
+    }
+    return false;
+  }
+  
   // Group nodes by page
   const pageNodes = {};
   allNodes.forEach(node => {
@@ -1888,13 +1926,17 @@ function detectNavigation(allNodes, nodeMap, styleMap, pages) {
     nodes.forEach(node => {
       const isNav = isNavigationElement(node, nodeMap, styleMap);
       if (isNav.likely) {
+        // Check if this nav OR its wrapper is a symbol
+        const nodeIsSymbol = node.type === 'Symbol' || node.type === 'CommerceSymbol' || !!node.symbolId;
+        const isInSymbol = isInsideSymbol(node._id);
+        
         navPatterns.found = true;
         navPatterns.instances.push({
           page: pageName,
           nodeId: node._id,
           type: node.type,
           classes: getClassNames(node, styleMap),
-          isSymbol: node.type === 'Symbol' || node.type === 'CommerceSymbol',
+          isSymbol: nodeIsSymbol || isInSymbol,
           confidence: isNav.confidence,
           reason: isNav.reason
         });
@@ -1902,16 +1944,18 @@ function detectNavigation(allNodes, nodeMap, styleMap, pages) {
     });
   });
   
-  // Check if all instances are the same symbol
+  // Check if all (or most) instances are components
   if (navPatterns.instances.length > 0) {
-    const symbols = navPatterns.instances.filter(i => i.isSymbol);
-    navPatterns.isComponent = symbols.length === navPatterns.instances.length && symbols.length > 0;
+    const symbolInstances = navPatterns.instances.filter(i => i.isSymbol);
+    // Consider it a component if ANY instances are symbols (they might have different navs for different pages)
+    navPatterns.isComponent = symbolInstances.length > 0;
+    navPatterns.componentCount = symbolInstances.length;
+    navPatterns.nonComponentCount = navPatterns.instances.length - symbolInstances.length;
     
     // Also check if they share a common structure (component-like behavior)
     const structures = navPatterns.instances.map(i => i.classes.join(','));
     const uniqueStructures = [...new Set(structures)];
     if (uniqueStructures.length === 1 && navPatterns.instances.length > 1) {
-      // Same classes across all pages - might be consistent even if not a symbol
       navPatterns.isConsistent = true;
     }
   }
@@ -1923,6 +1967,14 @@ function isNavigationElement(node, nodeMap, styleMap) {
   const classNames = getClassNames(node, styleMap).map(c => c.toLowerCase());
   const type = (node.type || '').toLowerCase();
   const tag = (node.tag || '').toLowerCase();
+  
+  // If it's a Symbol itself with nav-like naming, it's a nav component
+  if (type === 'symbol' || type === 'commercesymbol' || node.symbolId) {
+    const navClassPatterns = ['nav', 'navbar', 'header', 'menu', 'topbar', 'navigation'];
+    if (classNames.some(c => navClassPatterns.some(p => c.includes(p)))) {
+      return { likely: true, confidence: 'high', reason: 'Nav component (Symbol)' };
+    }
+  }
   
   // Direct indicators
   if (type === 'navbar' || tag === 'nav') {
@@ -1960,6 +2012,33 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
     instances: []
   };
   
+  // Find all Symbol nodes
+  const symbolNodes = new Set();
+  allNodes.forEach(node => {
+    if (node.type === 'Symbol' || node.type === 'CommerceSymbol' || node.symbolId) {
+      symbolNodes.add(node._id);
+    }
+  });
+  
+  // Helper to check if a node is inside a symbol
+  function isInsideSymbol(nodeId, depth = 5) {
+    if (depth <= 0) return false;
+    if (symbolNodes.has(nodeId)) return true;
+    
+    const node = nodeMap[nodeId];
+    if (!node) return false;
+    
+    for (const potentialParent of allNodes) {
+      if (potentialParent.children?.includes(nodeId)) {
+        if (symbolNodes.has(potentialParent._id) || potentialParent.type === 'Symbol' || potentialParent.symbolId) {
+          return true;
+        }
+        return isInsideSymbol(potentialParent._id, depth - 1);
+      }
+    }
+    return false;
+  }
+  
   // Group nodes by page
   const pageNodes = {};
   allNodes.forEach(node => {
@@ -1971,13 +2050,16 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
     nodes.forEach(node => {
       const isFooter = isFooterElement(node, nodeMap, styleMap);
       if (isFooter.likely) {
+        const nodeIsSymbol = node.type === 'Symbol' || node.type === 'CommerceSymbol' || !!node.symbolId;
+        const isInSymbol = isInsideSymbol(node._id);
+        
         footerPatterns.found = true;
         footerPatterns.instances.push({
           page: pageName,
           nodeId: node._id,
           type: node.type,
           classes: getClassNames(node, styleMap),
-          isSymbol: node.type === 'Symbol' || node.type === 'CommerceSymbol',
+          isSymbol: nodeIsSymbol || isInSymbol,
           confidence: isFooter.confidence
         });
       }
@@ -1985,8 +2067,10 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
   });
   
   if (footerPatterns.instances.length > 0) {
-    const symbols = footerPatterns.instances.filter(i => i.isSymbol);
-    footerPatterns.isComponent = symbols.length === footerPatterns.instances.length && symbols.length > 0;
+    const symbolInstances = footerPatterns.instances.filter(i => i.isSymbol);
+    footerPatterns.isComponent = symbolInstances.length > 0;
+    footerPatterns.componentCount = symbolInstances.length;
+    footerPatterns.nonComponentCount = footerPatterns.instances.length - symbolInstances.length;
   }
   
   return footerPatterns;
@@ -1996,6 +2080,14 @@ function isFooterElement(node, nodeMap, styleMap) {
   const classNames = getClassNames(node, styleMap).map(c => c.toLowerCase());
   const type = (node.type || '').toLowerCase();
   const tag = (node.tag || '').toLowerCase();
+  
+  // If it's a Symbol itself with footer-like naming, it's a footer component
+  if (type === 'symbol' || type === 'commercesymbol' || node.symbolId) {
+    const footerPatterns = ['footer', 'foot', 'bottom'];
+    if (classNames.some(c => footerPatterns.some(p => c.includes(p)))) {
+      return { likely: true, confidence: 'high', reason: 'Footer component (Symbol)' };
+    }
+  }
   
   if (tag === 'footer') {
     return { likely: true, confidence: 'high', reason: 'Footer tag' };
@@ -2016,7 +2108,7 @@ function isFooterElement(node, nodeMap, styleMap) {
 
 function analyzeComponentUsage(allNodes, pages) {
   const components = allNodes.filter(n => 
-    n.type === 'Symbol' || n.type === 'CommerceSymbol'
+    n.type === 'Symbol' || n.type === 'CommerceSymbol' || n.symbolId
   );
   
   const uniqueSymbols = new Set(components.map(c => c.symbolId || c._id));
