@@ -332,7 +332,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.9</span></h1>
+      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.10</span></h1>
       <p>Professional analysis for retainer evaluation and maintainability assessment</p>
     </header>
 
@@ -1862,7 +1862,17 @@ function analyzeComponents(aggregated, frameworkConfig) {
       patternAnalysis,
       variableAnalysis,
       siteAge,
-      historicalNote
+      historicalNote,
+      // Debug info to help diagnose component detection
+      debug: {
+        totalNodes: allNodes.length,
+        uniqueNodeTypes: [...new Set(allNodes.map(n => n.type))],
+        nodesWithSymbolId: allNodes.filter(n => n.symbolId).length,
+        nodesWithSym: allNodes.filter(n => n.sym).length,
+        symbolTypeNodes: allNodes.filter(n => n.type === 'Symbol' || n.type === 'symbol').length,
+        navInstancesFound: navAnalysis.instances?.length || 0,
+        footerInstancesFound: footerAnalysis.instances?.length || 0
+      }
     }
   };
 }
@@ -1876,43 +1886,45 @@ function detectNavigation(allNodes, nodeMap, styleMap, pages) {
     structure: null
   };
   
-  // First, find all Symbol nodes and their contents
-  const symbolNodes = new Set();
-  const symbolContents = new Map(); // symbolId -> child node IDs
+  // First, find all Symbol/Component nodes by checking multiple possible indicators
+  const symbolNodes = new Map(); // nodeId -> symbolInfo
   
   allNodes.forEach(node => {
-    if (node.type === 'Symbol' || node.type === 'CommerceSymbol' || node.symbolId) {
-      symbolNodes.add(node._id);
-      // Track what's inside this symbol
-      if (node.children) {
-        node.children.forEach(childId => {
-          symbolContents.set(childId, node._id);
-        });
-      }
+    // Check all possible ways Webflow might mark a component
+    const isSymbol = 
+      node.type === 'Symbol' || 
+      node.type === 'CommerceSymbol' ||
+      node.type === 'symbol' ||
+      !!node.symbolId ||
+      !!node.sym ||
+      !!node.component ||
+      !!node.componentId;
+    
+    if (isSymbol) {
+      symbolNodes.set(node._id, {
+        id: node._id,
+        symbolId: node.symbolId || node.sym || node.componentId,
+        type: node.type,
+        page: node.pageName
+      });
     }
   });
   
-  // Helper to check if a node is inside a symbol (at any depth)
-  function isInsideSymbol(nodeId, depth = 5) {
-    if (depth <= 0) return false;
-    if (symbolNodes.has(nodeId)) return true;
-    if (symbolContents.has(nodeId)) return true;
-    
-    // Check if any ancestor is a symbol
+  // Build a map of nodeId -> parent symbol (if any)
+  const nodeToSymbol = new Map();
+  
+  // For each symbol, mark all descendants as belonging to that symbol
+  function markDescendants(nodeId, symbolId) {
+    nodeToSymbol.set(nodeId, symbolId);
     const node = nodeMap[nodeId];
-    if (!node) return false;
-    
-    // Look for parent by checking who has this node as a child
-    for (const potentialParent of allNodes) {
-      if (potentialParent.children?.includes(nodeId)) {
-        if (symbolNodes.has(potentialParent._id) || potentialParent.type === 'Symbol' || potentialParent.symbolId) {
-          return true;
-        }
-        return isInsideSymbol(potentialParent._id, depth - 1);
-      }
+    if (node?.children) {
+      node.children.forEach(childId => markDescendants(childId, symbolId));
     }
-    return false;
   }
+  
+  symbolNodes.forEach((info, nodeId) => {
+    markDescendants(nodeId, info.symbolId || nodeId);
+  });
   
   // Group nodes by page
   const pageNodes = {};
@@ -1921,43 +1933,49 @@ function detectNavigation(allNodes, nodeMap, styleMap, pages) {
     pageNodes[node.pageName].push(node);
   });
   
+  // Track which pages have nav (to avoid duplicates)
+  const pagesWithNav = new Map(); // pageName -> navInfo
+  
   // Look for nav-like structures on each page
   Object.entries(pageNodes).forEach(([pageName, nodes]) => {
-    nodes.forEach(node => {
+    // Skip if we already found a nav on this page
+    if (pagesWithNav.has(pageName)) return;
+    
+    for (const node of nodes) {
       const isNav = isNavigationElement(node, nodeMap, styleMap);
       if (isNav.likely) {
-        // Check if this nav OR its wrapper is a symbol
-        const nodeIsSymbol = node.type === 'Symbol' || node.type === 'CommerceSymbol' || !!node.symbolId;
-        const isInSymbol = isInsideSymbol(node._id);
+        // Check if this nav is inside a symbol
+        const symbolId = nodeToSymbol.get(node._id);
+        const nodeIsSymbol = symbolNodes.has(node._id);
+        const isInSymbol = !!symbolId || nodeIsSymbol;
         
-        navPatterns.found = true;
-        navPatterns.instances.push({
+        pagesWithNav.set(pageName, {
           page: pageName,
           nodeId: node._id,
           type: node.type,
           classes: getClassNames(node, styleMap),
-          isSymbol: nodeIsSymbol || isInSymbol,
+          isSymbol: isInSymbol,
+          symbolId: symbolId,
           confidence: isNav.confidence,
           reason: isNav.reason
         });
+        
+        // Only record first nav found per page
+        break;
       }
-    });
+    }
   });
   
-  // Check if all (or most) instances are components
+  // Convert to instances array
+  navPatterns.instances = Array.from(pagesWithNav.values());
+  navPatterns.found = navPatterns.instances.length > 0;
+  
+  // Check if navs are components
   if (navPatterns.instances.length > 0) {
     const symbolInstances = navPatterns.instances.filter(i => i.isSymbol);
-    // Consider it a component if ANY instances are symbols (they might have different navs for different pages)
     navPatterns.isComponent = symbolInstances.length > 0;
     navPatterns.componentCount = symbolInstances.length;
     navPatterns.nonComponentCount = navPatterns.instances.length - symbolInstances.length;
-    
-    // Also check if they share a common structure (component-like behavior)
-    const structures = navPatterns.instances.map(i => i.classes.join(','));
-    const uniqueStructures = [...new Set(structures)];
-    if (uniqueStructures.length === 1 && navPatterns.instances.length > 1) {
-      navPatterns.isConsistent = true;
-    }
   }
   
   return navPatterns;
@@ -2012,32 +2030,38 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
     instances: []
   };
   
-  // Find all Symbol nodes
-  const symbolNodes = new Set();
+  // Find all Symbol/Component nodes
+  const symbolNodes = new Map();
+  
   allNodes.forEach(node => {
-    if (node.type === 'Symbol' || node.type === 'CommerceSymbol' || node.symbolId) {
-      symbolNodes.add(node._id);
+    const isSymbol = 
+      node.type === 'Symbol' || 
+      node.type === 'CommerceSymbol' ||
+      node.type === 'symbol' ||
+      !!node.symbolId ||
+      !!node.sym ||
+      !!node.component ||
+      !!node.componentId;
+    
+    if (isSymbol) {
+      symbolNodes.set(node._id, node.symbolId || node.sym || node.componentId || node._id);
     }
   });
   
-  // Helper to check if a node is inside a symbol
-  function isInsideSymbol(nodeId, depth = 5) {
-    if (depth <= 0) return false;
-    if (symbolNodes.has(nodeId)) return true;
-    
+  // Build nodeId -> symbol mapping
+  const nodeToSymbol = new Map();
+  
+  function markDescendants(nodeId, symbolId) {
+    nodeToSymbol.set(nodeId, symbolId);
     const node = nodeMap[nodeId];
-    if (!node) return false;
-    
-    for (const potentialParent of allNodes) {
-      if (potentialParent.children?.includes(nodeId)) {
-        if (symbolNodes.has(potentialParent._id) || potentialParent.type === 'Symbol' || potentialParent.symbolId) {
-          return true;
-        }
-        return isInsideSymbol(potentialParent._id, depth - 1);
-      }
+    if (node?.children) {
+      node.children.forEach(childId => markDescendants(childId, symbolId));
     }
-    return false;
   }
+  
+  symbolNodes.forEach((symbolId, nodeId) => {
+    markDescendants(nodeId, symbolId);
+  });
   
   // Group nodes by page
   const pageNodes = {};
@@ -2046,25 +2070,35 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
     pageNodes[node.pageName].push(node);
   });
   
+  // Track which pages have footer (to avoid duplicates)
+  const pagesWithFooter = new Map();
+  
   Object.entries(pageNodes).forEach(([pageName, nodes]) => {
-    nodes.forEach(node => {
+    if (pagesWithFooter.has(pageName)) return;
+    
+    for (const node of nodes) {
       const isFooter = isFooterElement(node, nodeMap, styleMap);
       if (isFooter.likely) {
-        const nodeIsSymbol = node.type === 'Symbol' || node.type === 'CommerceSymbol' || !!node.symbolId;
-        const isInSymbol = isInsideSymbol(node._id);
+        const symbolId = nodeToSymbol.get(node._id);
+        const nodeIsSymbol = symbolNodes.has(node._id);
+        const isInSymbol = !!symbolId || nodeIsSymbol;
         
-        footerPatterns.found = true;
-        footerPatterns.instances.push({
+        pagesWithFooter.set(pageName, {
           page: pageName,
           nodeId: node._id,
           type: node.type,
           classes: getClassNames(node, styleMap),
-          isSymbol: nodeIsSymbol || isInSymbol,
+          isSymbol: isInSymbol,
           confidence: isFooter.confidence
         });
+        
+        break;
       }
-    });
+    }
   });
+  
+  footerPatterns.instances = Array.from(pagesWithFooter.values());
+  footerPatterns.found = footerPatterns.instances.length > 0;
   
   if (footerPatterns.instances.length > 0) {
     const symbolInstances = footerPatterns.instances.filter(i => i.isSymbol);
@@ -3904,6 +3938,8 @@ function registerAllIssueData(r) {
           () => {
             const nav = metrics.components.data.navAnalysis;
             const historical = metrics.components.data.historicalNote;
+            const debug = metrics.components.data.debug;
+            
             let html = `<div class="issue-list-item">
               <div class="issue-list-item-header">
                 <span class="issue-list-item-badge high">Critical Issue</span>
@@ -3926,6 +3962,18 @@ function registerAllIssueData(r) {
                   ).join('')}
                 </div>
               </div>`;
+              
+              // Show nav instance details for debugging
+              html += `<div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge" style="background: #333;">Nav elements found:</span>
+                </div>
+                <div class="issue-list-item-detail" style="font-size: 11px; color: #888;">
+                  ${nav.instances.slice(0, 5).map(i => 
+                    `• ${i.page}: type="${i.type}", isSymbol=${i.isSymbol}, classes=[${i.classes.slice(0,2).join(', ')}]`
+                  ).join('<br>')}
+                </div>
+              </div>`;
             }
             
             html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a3a1a; border-radius: 6px; border-left: 3px solid #22c55e;">
@@ -3936,6 +3984,19 @@ function registerAllIssueData(r) {
             if (historical) {
               html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a2a3a; border-radius: 6px; border-left: 3px solid #3b82f6;">
                 <strong style="color: #3b82f6;">📅 Historical Note:</strong> ${escapeHtml(historical)}
+              </div>`;
+            }
+            
+            // Debug info
+            if (debug) {
+              html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a1a2e; border-radius: 6px; border-left: 3px solid #8b5cf6;">
+                <strong style="color: #8b5cf6;">🔍 Debug Info:</strong><br>
+                <span style="font-size: 11px; color: #888; font-family: monospace;">
+                  Node types found: ${debug.uniqueNodeTypes?.join(', ') || 'none'}<br>
+                  Nodes with symbolId: ${debug.nodesWithSymbolId}<br>
+                  Symbol type nodes: ${debug.symbolTypeNodes}<br>
+                  Total nodes: ${debug.totalNodes}
+                </span>
               </div>`;
             }
             
