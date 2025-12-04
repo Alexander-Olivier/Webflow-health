@@ -332,7 +332,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.4</span></h1>
+      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.5</span></h1>
       <p>Professional analysis for retainer evaluation and maintainability assessment</p>
     </header>
 
@@ -1233,16 +1233,20 @@ function findNumberedWithSameCss(styles) {
       cssBuckets.get(s.normalizedCss).push(s);
     });
     
-    // Only flag buckets with 2+ classes (same base, same CSS)
+    // Only flag buckets with 2+ classes with DIFFERENT names (same base, same CSS)
     cssBuckets.forEach((bucket, css) => {
       if (bucket.length >= 2) {
-        groups.push({
-          baseName: baseName,
-          styles: bucket,
-          css: bucket[0].css.substring(0, 150),
-          count: bucket.length,
-          suggestion: `Merge into .${baseName}`
-        });
+        // Check if these are actually different class names, not same class in different contexts
+        const uniqueNames = [...new Set(bucket.map(s => s.name))];
+        if (uniqueNames.length >= 2) {
+          groups.push({
+            baseName: baseName,
+            styles: bucket.filter((s, i, arr) => arr.findIndex(x => x.name === s.name) === i), // Dedupe by name
+            css: bucket[0].css.substring(0, 150),
+            count: uniqueNames.length,
+            suggestion: `Merge into .${baseName}`
+          });
+        }
       }
     });
   });
