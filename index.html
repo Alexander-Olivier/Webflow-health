@@ -332,7 +332,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.7</span></h1>
+      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.8</span></h1>
       <p>Professional analysis for retainer evaluation and maintainability assessment</p>
     </header>
 
@@ -940,11 +940,12 @@ function analyzeAll() {
   const styleConsistency = analyzeStyleConsistency(aggregated, frameworkConfig);
   const typography = analyzeTypography(aggregated);
   const architecture = analyzeArchitecture(aggregated, frameworkConfig);
+  const components = analyzeComponents(aggregated, frameworkConfig);
   const maintainability = analyzeMaintainability(aggregated, frameworkConfig);
   const technical = analyzeTechnical(aggregated);
   
   // Calculate scores
-  const metrics = { naming, styleConsistency, typography, architecture, maintainability, technical };
+  const metrics = { naming, styleConsistency, typography, architecture, components, maintainability, technical };
   let totalScore = 0;
   Object.values(metrics).forEach(m => totalScore += m.score);
   
@@ -1777,6 +1778,444 @@ function analyzeArchitecture(aggregated, frameworkConfig) {
   };
 }
 
+// ========== COMPONENT ANALYSIS ==========
+
+function analyzeComponents(aggregated, frameworkConfig) {
+  const { allNodes, nodeMap, allStyles, pages, unlinkedSymbols, pageCount } = aggregated;
+  let score = 15; // Start with 15, max 15
+  const issues = [];
+  
+  // Build style lookup
+  const styleMap = {};
+  allStyles.forEach(s => styleMap[s._id] = s);
+  
+  // 1. Detect if navigation and footer are components
+  const navAnalysis = detectNavigation(allNodes, nodeMap, styleMap, pages);
+  const footerAnalysis = detectFooter(allNodes, nodeMap, styleMap, pages);
+  
+  // 2. Count actual components (symbols)
+  const componentAnalysis = analyzeComponentUsage(allNodes, pages);
+  
+  // 3. Detect repeated patterns that should be components
+  const patternAnalysis = detectRepeatedPatterns(allNodes, nodeMap, styleMap, pages);
+  
+  // 4. Check for component variables (introduced Oct 2023)
+  const variableAnalysis = analyzeComponentVariables(allStyles, allNodes);
+  
+  // 5. Check site age for historical context
+  const siteAge = detectSiteAge(pages);
+  
+  // Scoring
+  
+  // Navigation not a component = serious issue
+  if (!navAnalysis.isComponent && navAnalysis.found) {
+    score -= 4;
+    issues.push('Navigation is not a component');
+  }
+  
+  // Footer not a component = serious issue  
+  if (!footerAnalysis.isComponent && footerAnalysis.found) {
+    score -= 3;
+    issues.push('Footer is not a component');
+  }
+  
+  // Repeated patterns that should be components
+  if (patternAnalysis.shouldBeComponents.length > 5) {
+    score -= 4;
+    issues.push(`${patternAnalysis.shouldBeComponents.length} repeated patterns should be components`);
+  } else if (patternAnalysis.shouldBeComponents.length > 2) {
+    score -= 2;
+    issues.push(`${patternAnalysis.shouldBeComponents.length} repeated patterns could be components`);
+  }
+  
+  // Low component usage across pages
+  if (componentAnalysis.totalComponents === 0 && pageCount > 1) {
+    score -= 2;
+    issues.push('No components detected');
+  } else if (componentAnalysis.avgPerPage < 2 && pageCount > 2) {
+    score -= 1;
+    issues.push('Low component usage');
+  }
+  
+  // Bonus for good practices
+  if (variableAnalysis.hasVariables && componentAnalysis.totalComponents > 0) {
+    score = Math.min(15, score + 1); // Bonus for using variables
+  }
+  
+  // Build historical context
+  let historicalNote = null;
+  if (siteAge.estimatedYear && siteAge.estimatedYear < 2023) {
+    historicalNote = `Site appears to be from ~${siteAge.estimatedYear}. Component variables weren't available until late 2023.`;
+  } else if (siteAge.estimatedYear === 2023 && siteAge.estimatedMonth < 10) {
+    historicalNote = `Site appears to be from early 2023. Component variables weren't available until October 2023.`;
+  }
+  
+  return {
+    score: Math.max(0, score),
+    max: 15,
+    detail: `${componentAnalysis.totalComponents} components, ${patternAnalysis.shouldBeComponents.length} repeated patterns`,
+    issues,
+    data: {
+      navAnalysis,
+      footerAnalysis,
+      componentAnalysis,
+      patternAnalysis,
+      variableAnalysis,
+      siteAge,
+      historicalNote
+    }
+  };
+}
+
+function detectNavigation(allNodes, nodeMap, styleMap, pages) {
+  // Look for navigation patterns in the DOM structure
+  const navPatterns = {
+    found: false,
+    isComponent: false,
+    instances: [],
+    structure: null
+  };
+  
+  // Group nodes by page
+  const pageNodes = {};
+  allNodes.forEach(node => {
+    if (!pageNodes[node.pageName]) pageNodes[node.pageName] = [];
+    pageNodes[node.pageName].push(node);
+  });
+  
+  // Look for nav-like structures on each page
+  Object.entries(pageNodes).forEach(([pageName, nodes]) => {
+    nodes.forEach(node => {
+      const isNav = isNavigationElement(node, nodeMap, styleMap);
+      if (isNav.likely) {
+        navPatterns.found = true;
+        navPatterns.instances.push({
+          page: pageName,
+          nodeId: node._id,
+          type: node.type,
+          classes: getClassNames(node, styleMap),
+          isSymbol: node.type === 'Symbol' || node.type === 'CommerceSymbol',
+          confidence: isNav.confidence,
+          reason: isNav.reason
+        });
+      }
+    });
+  });
+  
+  // Check if all instances are the same symbol
+  if (navPatterns.instances.length > 0) {
+    const symbols = navPatterns.instances.filter(i => i.isSymbol);
+    navPatterns.isComponent = symbols.length === navPatterns.instances.length && symbols.length > 0;
+    
+    // Also check if they share a common structure (component-like behavior)
+    const structures = navPatterns.instances.map(i => i.classes.join(','));
+    const uniqueStructures = [...new Set(structures)];
+    if (uniqueStructures.length === 1 && navPatterns.instances.length > 1) {
+      // Same classes across all pages - might be consistent even if not a symbol
+      navPatterns.isConsistent = true;
+    }
+  }
+  
+  return navPatterns;
+}
+
+function isNavigationElement(node, nodeMap, styleMap) {
+  const classNames = getClassNames(node, styleMap).map(c => c.toLowerCase());
+  const type = (node.type || '').toLowerCase();
+  const tag = (node.tag || '').toLowerCase();
+  
+  // Direct indicators
+  if (type === 'navbar' || tag === 'nav') {
+    return { likely: true, confidence: 'high', reason: 'Nav element type' };
+  }
+  
+  // Class name patterns
+  const navClassPatterns = ['nav', 'navbar', 'header', 'menu', 'topbar', 'navigation'];
+  if (classNames.some(c => navClassPatterns.some(p => c.includes(p)))) {
+    // Check it's not a footer nav
+    if (!classNames.some(c => c.includes('footer'))) {
+      return { likely: true, confidence: 'medium', reason: 'Nav class pattern' };
+    }
+  }
+  
+  // Structure analysis: contains logo + multiple links
+  const children = (node.children || []).map(id => nodeMap[id]).filter(Boolean);
+  const hasLogo = children.some(c => 
+    c.type === 'Image' || 
+    getClassNames(c, styleMap).some(cn => cn.toLowerCase().includes('logo'))
+  );
+  const linkCount = countLinks(node, nodeMap);
+  
+  if (hasLogo && linkCount >= 3) {
+    return { likely: true, confidence: 'medium', reason: 'Logo + multiple links structure' };
+  }
+  
+  return { likely: false };
+}
+
+function detectFooter(allNodes, nodeMap, styleMap, pages) {
+  const footerPatterns = {
+    found: false,
+    isComponent: false,
+    instances: []
+  };
+  
+  // Group nodes by page
+  const pageNodes = {};
+  allNodes.forEach(node => {
+    if (!pageNodes[node.pageName]) pageNodes[node.pageName] = [];
+    pageNodes[node.pageName].push(node);
+  });
+  
+  Object.entries(pageNodes).forEach(([pageName, nodes]) => {
+    nodes.forEach(node => {
+      const isFooter = isFooterElement(node, nodeMap, styleMap);
+      if (isFooter.likely) {
+        footerPatterns.found = true;
+        footerPatterns.instances.push({
+          page: pageName,
+          nodeId: node._id,
+          type: node.type,
+          classes: getClassNames(node, styleMap),
+          isSymbol: node.type === 'Symbol' || node.type === 'CommerceSymbol',
+          confidence: isFooter.confidence
+        });
+      }
+    });
+  });
+  
+  if (footerPatterns.instances.length > 0) {
+    const symbols = footerPatterns.instances.filter(i => i.isSymbol);
+    footerPatterns.isComponent = symbols.length === footerPatterns.instances.length && symbols.length > 0;
+  }
+  
+  return footerPatterns;
+}
+
+function isFooterElement(node, nodeMap, styleMap) {
+  const classNames = getClassNames(node, styleMap).map(c => c.toLowerCase());
+  const type = (node.type || '').toLowerCase();
+  const tag = (node.tag || '').toLowerCase();
+  
+  if (tag === 'footer') {
+    return { likely: true, confidence: 'high', reason: 'Footer tag' };
+  }
+  
+  const footerPatterns = ['footer', 'foot', 'bottom-section', 'site-footer'];
+  if (classNames.some(c => footerPatterns.some(p => c.includes(p)))) {
+    return { likely: true, confidence: 'high', reason: 'Footer class pattern' };
+  }
+  
+  // Check for copyright text indicator in class names
+  if (classNames.some(c => c.includes('copyright') || c.includes('legal'))) {
+    return { likely: true, confidence: 'medium', reason: 'Copyright section' };
+  }
+  
+  return { likely: false };
+}
+
+function analyzeComponentUsage(allNodes, pages) {
+  const components = allNodes.filter(n => 
+    n.type === 'Symbol' || n.type === 'CommerceSymbol'
+  );
+  
+  const uniqueSymbols = new Set(components.map(c => c.symbolId || c._id));
+  
+  // Count per page
+  const perPage = {};
+  components.forEach(c => {
+    if (!perPage[c.pageName]) perPage[c.pageName] = 0;
+    perPage[c.pageName]++;
+  });
+  
+  const pageCount = pages.length || 1;
+  const avgPerPage = components.length / pageCount;
+  
+  return {
+    totalComponents: components.length,
+    uniqueComponents: uniqueSymbols.size,
+    avgPerPage,
+    perPage
+  };
+}
+
+function detectRepeatedPatterns(allNodes, nodeMap, styleMap, pages) {
+  // Hash structure patterns to find repeated elements
+  const patterns = new Map();
+  const shouldBeComponents = [];
+  
+  // Only analyze "significant" structures (3+ children or specific types)
+  const significantNodes = allNodes.filter(node => {
+    const children = node.children || [];
+    const type = (node.type || '').toLowerCase();
+    return children.length >= 2 || 
+           type.includes('section') || 
+           type.includes('container') ||
+           type.includes('block');
+  });
+  
+  significantNodes.forEach(node => {
+    // Skip if it's already a component
+    if (node.type === 'Symbol' || node.type === 'CommerceSymbol') return;
+    
+    const hash = hashNodeStructure(node, nodeMap, styleMap, 2); // 2 levels deep
+    if (!hash) return;
+    
+    if (!patterns.has(hash)) {
+      patterns.set(hash, []);
+    }
+    patterns.get(hash).push({
+      nodeId: node._id,
+      page: node.pageName,
+      classes: getClassNames(node, styleMap),
+      type: node.type,
+      childCount: (node.children || []).length
+    });
+  });
+  
+  // Find patterns that appear on multiple pages
+  patterns.forEach((instances, hash) => {
+    const uniquePages = [...new Set(instances.map(i => i.page))];
+    
+    // If same structure appears on 2+ pages and isn't a component, flag it
+    if (uniquePages.length >= 2 && instances.length >= 2) {
+      // Get representative class names
+      const classPattern = instances[0].classes.slice(0, 3).join(', ');
+      shouldBeComponents.push({
+        hash,
+        instances: instances.slice(0, 5),
+        pageCount: uniquePages.length,
+        totalCount: instances.length,
+        classPattern: classPattern || 'unnamed structure',
+        childCount: instances[0].childCount,
+        suggestion: `This ${instances[0].type || 'structure'} appears on ${uniquePages.length} pages`
+      });
+    }
+  });
+  
+  // Sort by frequency
+  shouldBeComponents.sort((a, b) => b.totalCount - a.totalCount);
+  
+  return {
+    shouldBeComponents: shouldBeComponents.slice(0, 10),
+    totalPatterns: patterns.size
+  };
+}
+
+function hashNodeStructure(node, nodeMap, styleMap, depth = 2) {
+  if (!node || depth < 0) return '';
+  
+  const type = node.type || 'unknown';
+  const tag = node.tag || '';
+  const classNames = getClassNames(node, styleMap);
+  
+  // Create a structural hash (type + child count + class pattern)
+  const childIds = node.children || [];
+  let childHash = '';
+  
+  if (depth > 0 && childIds.length > 0) {
+    const childHashes = childIds.slice(0, 5).map(id => {
+      const child = nodeMap[id];
+      return child ? hashNodeStructure(child, nodeMap, styleMap, depth - 1) : '';
+    });
+    childHash = childHashes.join('|');
+  }
+  
+  // Include class base names (without numbers) for pattern matching
+  const classBase = classNames.map(c => c.replace(/[-_]?\d+$/, '').toLowerCase()).sort().join(',');
+  
+  return `${type}:${tag}:${childIds.length}:${classBase}:${childHash}`;
+}
+
+function analyzeComponentVariables(allStyles, allNodes) {
+  // Check for CSS variable usage which indicates intentional design
+  let hasVariables = false;
+  let variableCount = 0;
+  
+  allStyles.forEach(style => {
+    const css = style.styleLess || '';
+    const varMatches = css.match(/var\(--[^)]+\)/g);
+    if (varMatches) {
+      hasVariables = true;
+      variableCount += varMatches.length;
+    }
+  });
+  
+  // Component variables (properties) would show as variant styles
+  // This is harder to detect without full component data
+  
+  return {
+    hasVariables,
+    variableCount,
+    hasCssVariables: hasVariables
+  };
+}
+
+function detectSiteAge(pages) {
+  // Try to estimate site age from class patterns and Webflow features
+  let estimatedYear = null;
+  let estimatedMonth = null;
+  let indicators = [];
+  
+  // Look for date patterns in class names (rare but possible)
+  // Look for Webflow version indicators
+  
+  const allClassNames = [];
+  pages.forEach(page => {
+    page.styles?.forEach(s => allClassNames.push(s.name));
+  });
+  
+  // Check for older Webflow patterns
+  const hasOldPatterns = allClassNames.some(c => 
+    c?.match(/^w-\d+$/) || // Old Webflow class format
+    c?.includes('af-class-') || // Webflow migration classes
+    c?.includes('w-condition-')
+  );
+  
+  if (hasOldPatterns) {
+    indicators.push('Legacy Webflow class patterns detected');
+    estimatedYear = 2020; // Rough estimate
+  }
+  
+  // Check for newer features (components with variants use specific patterns)
+  const hasNewPatterns = allClassNames.some(c =>
+    c?.match(/^Style\s*\d+$/i) // Component variant styles (2023+)
+  );
+  
+  if (hasNewPatterns) {
+    estimatedYear = 2023;
+    indicators.push('Component variant styles detected');
+  }
+  
+  return {
+    estimatedYear,
+    estimatedMonth,
+    indicators,
+    confidence: indicators.length > 0 ? 'low' : 'none'
+  };
+}
+
+function getClassNames(node, styleMap) {
+  return (node.classes || []).map(c => {
+    const style = styleMap[c];
+    return style?.name || c;
+  }).filter(Boolean);
+}
+
+function countLinks(node, nodeMap, depth = 3) {
+  if (!node || depth < 0) return 0;
+  
+  let count = 0;
+  if (node.type === 'Link' || node.tag === 'a') count++;
+  
+  (node.children || []).forEach(childId => {
+    const child = nodeMap[childId];
+    if (child) count += countLinks(child, nodeMap, depth - 1);
+  });
+  
+  return count;
+}
+
 function analyzeNestingDepth(nodes, nodeMap, allStyles) {
   let maxDepth = 0;
   let deepNodes = [];
@@ -2417,12 +2856,14 @@ function determineComplexity(score, aggregated, metrics) {
 }
 
 function getGrade(score) {
-  if (score >= 90) return 'A+';
-  if (score >= 85) return 'A';
-  if (score >= 80) return 'B+';
-  if (score >= 70) return 'B';
-  if (score >= 60) return 'C';
-  if (score >= 50) return 'D';
+  // Max score is now 115 (was 100), normalize to percentage
+  const pct = (score / 115) * 100;
+  if (pct >= 90) return 'A+';
+  if (pct >= 85) return 'A';
+  if (pct >= 80) return 'B+';
+  if (pct >= 70) return 'B';
+  if (pct >= 60) return 'C';
+  if (pct >= 50) return 'D';
   return 'F';
 }
 
@@ -2827,6 +3268,19 @@ function displayResults() {
           <li>Structure consistency across pages</li>
         </ul>
         Deep nesting = hard to maintain`
+    },
+    components: { 
+      icon: '🧩', 
+      label: 'Components',
+      tooltip: `<strong>How we measure component usage:</strong>
+        <ul>
+          <li>Navigation as a component (critical)</li>
+          <li>Footer as a component (critical)</li>
+          <li>Repeated patterns across pages</li>
+          <li>Component variable usage</li>
+          <li>Overall component adoption</li>
+        </ul>
+        Components = consistent, maintainable site`
     },
     maintainability: { 
       icon: '🔧', 
@@ -3344,6 +3798,169 @@ function registerAllIssueData(r) {
         );
       } else {
         registerIssueData(`architecture-${idx}`, 'Architecture Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
+      }
+    });
+  }
+  
+  // Component issues
+  if (metrics.components && metrics.components.issues.length > 0) {
+    metrics.components.issues.forEach((issue, idx) => {
+      if (issue.includes('Navigation is not a component')) {
+        registerIssueData(`components-${idx}`,
+          'Navigation Not a Component',
+          'Your navigation appears on multiple pages but isn\'t built as a reusable component. This makes updates risky and time-consuming.',
+          () => {
+            const nav = metrics.components.data.navAnalysis;
+            const historical = metrics.components.data.historicalNote;
+            let html = `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge high">Critical Issue</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Navigation found on ${nav.instances?.length || 'multiple'} pages but not as a component.<br><br>
+                <strong>Impact:</strong> Every nav update must be made ${nav.instances?.length || 'multiple'} times manually.<br>
+                <strong>Risk:</strong> Inconsistencies, missed updates, increased maintenance time.
+              </div>
+            </div>`;
+            
+            if (nav.instances && nav.instances.length > 0) {
+              html += `<div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge medium">Found on pages:</span>
+                </div>
+                <div class="issue-list-item-group" style="margin-top: 10px;">
+                  ${[...new Set(nav.instances.map(i => i.page))].slice(0, 10).map(p => 
+                    `<span class="issue-list-item-class">${escapeHtml(p)}</span>`
+                  ).join('')}
+                </div>
+              </div>`;
+            }
+            
+            html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a3a1a; border-radius: 6px; border-left: 3px solid #22c55e;">
+              <strong style="color: #22c55e;">✓ Solution:</strong> Convert your navigation to a Component (symbol). 
+              Select the nav element → Right-click → "Create Component". Then replace the nav on all pages with this component.
+            </div>`;
+            
+            if (historical) {
+              html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a2a3a; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                <strong style="color: #3b82f6;">📅 Historical Note:</strong> ${escapeHtml(historical)}
+              </div>`;
+            }
+            
+            return html;
+          }
+        );
+      } else if (issue.includes('Footer is not a component')) {
+        registerIssueData(`components-${idx}`,
+          'Footer Not a Component',
+          'Your footer appears on multiple pages but isn\'t built as a reusable component.',
+          () => {
+            const footer = metrics.components.data.footerAnalysis;
+            const historical = metrics.components.data.historicalNote;
+            let html = `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge high">Critical Issue</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Footer found on ${footer.instances?.length || 'multiple'} pages but not as a component.<br><br>
+                <strong>Impact:</strong> Footer updates (links, copyright year, etc.) must be done manually on each page.<br>
+                <strong>Risk:</strong> Outdated information, inconsistent footer content.
+              </div>
+            </div>`;
+            
+            html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a3a1a; border-radius: 6px; border-left: 3px solid #22c55e;">
+              <strong style="color: #22c55e;">✓ Solution:</strong> Convert your footer to a Component.
+              This ensures updates propagate to all pages automatically.
+            </div>`;
+            
+            if (historical) {
+              html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a2a3a; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                <strong style="color: #3b82f6;">📅 Historical Note:</strong> ${escapeHtml(historical)}
+              </div>`;
+            }
+            
+            return html;
+          }
+        );
+      } else if (issue.includes('repeated patterns')) {
+        registerIssueData(`components-${idx}`,
+          'Repeated Patterns Should Be Components',
+          'Similar structures are being copied across pages instead of using reusable components.',
+          () => {
+            const patterns = metrics.components.data.patternAnalysis.shouldBeComponents || [];
+            const historical = metrics.components.data.historicalNote;
+            
+            if (patterns.length === 0) {
+              return '<p class="empty-msg">No specific patterns recorded</p>';
+            }
+            
+            let html = patterns.slice(0, 6).map(pattern => `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge medium">Found ${pattern.totalCount}× on ${pattern.pageCount} pages</span>
+                </div>
+                <div class="issue-list-item-detail">
+                  <strong>Pattern:</strong> ${escapeHtml(pattern.classPattern || 'Unnamed structure')}<br>
+                  <strong>Type:</strong> ${escapeHtml(pattern.instances[0]?.type || 'Block')} with ${pattern.childCount} children<br>
+                  <strong>Pages:</strong> ${[...new Set(pattern.instances.map(i => i.page))].slice(0, 5).join(', ')}
+                </div>
+                <div class="issue-list-item-detail" style="margin-top: 10px; padding: 10px; background: #1a2a1a; border-radius: 6px;">
+                  <strong style="color: #86efac;">💡 Likely candidate:</strong> ${pattern.suggestion}
+                </div>
+              </div>
+            `).join('');
+            
+            html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a3a1a; border-radius: 6px; border-left: 3px solid #22c55e;">
+              <strong style="color: #22c55e;">✓ Solution:</strong> Convert repeated sections to Components.<br>
+              Use Component Variables (properties) to customize colors, text, or images while keeping the structure consistent.
+            </div>`;
+            
+            if (historical) {
+              html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a2a3a; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                <strong style="color: #3b82f6;">📅 Historical Note:</strong> ${escapeHtml(historical)}
+              </div>`;
+            }
+            
+            return html;
+          }
+        );
+      } else if (issue.includes('No components detected') || issue.includes('Low component usage')) {
+        registerIssueData(`components-${idx}`,
+          'Low Component Usage',
+          'This project has few or no reusable components, making maintenance more difficult.',
+          () => {
+            const comp = metrics.components.data.componentAnalysis;
+            const historical = metrics.components.data.historicalNote;
+            
+            let html = `<div class="issue-list-item">
+              <div class="issue-list-item-header">
+                <span class="issue-list-item-badge medium">${comp.totalComponents} components total</span>
+              </div>
+              <div class="issue-list-item-detail">
+                Components (symbols) allow you to update once and propagate changes everywhere.<br><br>
+                <strong>Recommendation:</strong> Start with navigation, footer, and frequently-used sections.
+              </div>
+            </div>`;
+            
+            html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a3a1a; border-radius: 6px; border-left: 3px solid #22c55e;">
+              <strong style="color: #22c55e;">✓ Quick wins:</strong><br>
+              • Navigation → Component<br>
+              • Footer → Component<br>
+              • Card layouts → Component with variables<br>
+              • CTA sections → Component with variables
+            </div>`;
+            
+            if (historical) {
+              html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a2a3a; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                <strong style="color: #3b82f6;">📅 Historical Note:</strong> ${escapeHtml(historical)}
+              </div>`;
+            }
+            
+            return html;
+          }
+        );
+      } else {
+        registerIssueData(`components-${idx}`, 'Component Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
       }
     });
   }
