@@ -1193,6 +1193,10 @@ function findNumberedWithSameCss(styles) {
     if (!style.styleLess || style.styleLess.length < 5) return;
     
     const name = style.name || '';
+    
+    // Skip Webflow auto-generated component variant classes (Style 1, Style 2, etc.)
+    if (/^Style\s*\d+$/i.test(name)) return;
+    
     // Extract base name: heading-1 -> heading, card-copy -> card, section-2-copy -> section-2
     const baseName = name
       .replace(/-copy(-\d+)?$/i, '')  // Remove -copy and -copy-2
@@ -3828,6 +3832,4 @@ function downloadJson() {
   URL.revokeObjectURL(a.href);
   showToast('Report downloaded!');
 }
-</script>
-</body>
-</html>
+</script></body></html>
