@@ -332,7 +332,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.6</span></h1>
+      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.7</span></h1>
       <p>Professional analysis for retainer evaluation and maintainability assessment</p>
     </header>
 
@@ -664,6 +664,18 @@ const SPACING_SCALES = {
   '4px': [0, 2, 4, 8, 12, 16, 20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256],
   '8px': [0, 4, 8, 16, 24, 32, 40, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256],
   '5px': [0, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 100, 120, 140, 160, 200]
+};
+
+// Webflow breakpoint name mapping
+const BREAKPOINT_NAMES = {
+  'xxl': '1920px+',
+  'xl': '1440px',
+  'large': '1280px',
+  'medium': 'Tablet (991px)',
+  'small': 'Mobile Landscape (767px)',
+  'tiny': 'Mobile Portrait (478px)',
+  'main': 'Desktop (base)',
+  'base': 'Desktop (base)'
 };
 
 // ========== STATE ==========
@@ -3296,6 +3308,40 @@ function registerAllIssueData(r) {
             </div>`;
           }
         );
+      } else if (issue.includes('nesting') && issue.includes('levels')) {
+        registerIssueData(`architecture-${idx}`,
+          'Deep Nesting Detected',
+          'Elements are nested too deeply, making the structure hard to maintain and potentially impacting performance.',
+          () => {
+            const nesting = metrics.architecture.data.nestingAnalysis;
+            const deepNodes = nesting.deepNodes || [];
+            if (deepNodes.length === 0) {
+              return `<div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge high">Max depth: ${nesting.maxDepth} levels</span>
+                </div>
+                <div class="issue-list-item-detail">
+                  The element tree is nested ${nesting.maxDepth} levels deep. Consider flattening the structure.
+                </div>
+              </div>`;
+            }
+            return deepNodes.slice(0, 5).map(node => {
+              const pathStr = node.path.map(p => {
+                const cls = p.classes.length > 0 ? `.${p.classes[0]}` : `[${p.type}]`;
+                return `<span style="color: #94a3b8;">${escapeHtml(cls)}</span>`;
+              }).join(' <span style="color: #475569;">→</span> ');
+              return `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge high">${node.depth} levels deep</span>
+                </div>
+                <div class="issue-list-item-detail" style="font-family: monospace; font-size: 12px; overflow-x: auto; white-space: nowrap;">
+                  ${pathStr}
+                </div>
+              </div>`;
+            }).join('');
+          }
+        );
       } else {
         registerIssueData(`architecture-${idx}`, 'Architecture Issue', issue, () => `<p>${escapeHtml(issue)}</p>`);
       }
@@ -3326,20 +3372,59 @@ function registerAllIssueData(r) {
           () => {
             const count = metrics.maintainability.data.emptyClasses;
             const classList = metrics.maintainability.data.emptyClassList || [];
-            return `<div class="issue-list-item">
-              <div class="issue-list-item-header">
-                <span class="issue-list-item-badge medium">${count} empty classes</span>
-              </div>
-              <div class="issue-list-item-detail">
-                These classes have no styles. If they're not used for JavaScript targeting, consider removing them.
-              </div>
-              ${classList.length > 0 ? `
-                <div class="issue-list-item-group" style="margin-top: 12px;">
-                  ${classList.slice(0, 30).map(name => `<span class="issue-list-item-class">.${escapeHtml(name)}</span>`).join('')}
-                  ${classList.length > 30 ? `<span class="issue-list-item-class" style="background: #333;">+${classList.length - 30} more</span>` : ''}
+            // Deduplicate class names
+            const uniqueClasses = [...new Set(classList)];
+            
+            // Identify likely JS hook patterns
+            const likelyJsHooks = uniqueClasses.filter(name => 
+              name.includes('hide') || 
+              name.includes('show') || 
+              name.includes('active') || 
+              name.includes('toggle') ||
+              name.includes('state') ||
+              name.includes('is-') ||
+              name.includes('has-')
+            );
+            const otherEmpty = uniqueClasses.filter(name => !likelyJsHooks.includes(name));
+            
+            let html = '';
+            
+            if (likelyJsHooks.length > 0) {
+              html += `<div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge" style="background: #1a3a1a; color: #22c55e;">${likelyJsHooks.length} likely JS hooks</span>
                 </div>
-              ` : ''}
+                <div class="issue-list-item-detail" style="color: #86efac;">
+                  These classes may be used by JavaScript for state management. Verify before removing.
+                </div>
+                <div class="issue-list-item-group" style="margin-top: 10px;">
+                  ${likelyJsHooks.slice(0, 15).map(name => `<span class="issue-list-item-class" style="border-color: #22c55e;">.${escapeHtml(name)}</span>`).join('')}
+                  ${likelyJsHooks.length > 15 ? `<span class="issue-list-item-class" style="background: #333;">+${likelyJsHooks.length - 15} more</span>` : ''}
+                </div>
+              </div>`;
+            }
+            
+            if (otherEmpty.length > 0) {
+              html += `<div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-badge medium">${otherEmpty.length} empty classes</span>
+                </div>
+                <div class="issue-list-item-detail">
+                  These classes have no styles. Check if they're used in custom code before removing.
+                </div>
+                <div class="issue-list-item-group" style="margin-top: 10px;">
+                  ${otherEmpty.slice(0, 20).map(name => `<span class="issue-list-item-class">.${escapeHtml(name)}</span>`).join('')}
+                  ${otherEmpty.length > 20 ? `<span class="issue-list-item-class" style="background: #333;">+${otherEmpty.length - 20} more</span>` : ''}
+                </div>
+              </div>`;
+            }
+            
+            html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a2a3a; border-radius: 6px; border-left: 3px solid #3b82f6;">
+              <strong style="color: #3b82f6;">💡 Tip:</strong> Search your custom code for these class names before deleting. 
+              Scripts often use empty classes for targeting elements (e.g., <code>.querySelectorAll('.hide_now')</code>).
             </div>`;
+            
+            return html;
           }
         );
       } else if (issue.includes('single page only')) {
@@ -3453,15 +3538,42 @@ function registerAllIssueData(r) {
           () => {
             const issues = metrics.technical.data.breakpointAnalysis.breakpointIssues || [];
             if (issues.length === 0) return '<p class="empty-msg">No specific issues recorded</p>';
-            return issues.slice(0, 8).map(issue => `
+            return issues.slice(0, 8).map(issue => {
+              const bpName = BREAKPOINT_NAMES[issue.breakpoint] || issue.breakpoint;
+              return `
               <div class="issue-list-item">
                 <div class="issue-list-item-header">
                   <span class="issue-list-item-class">.${escapeHtml(issue.class)}</span>
-                  <span class="issue-list-item-badge medium">${escapeHtml(issue.breakpoint)}</span>
+                  <span class="issue-list-item-badge medium">${escapeHtml(bpName)}</span>
                 </div>
                 <div class="issue-list-item-detail">${escapeHtml(issue.issue)}</div>
               </div>
-            `).join('');
+            `}).join('');
+          }
+        );
+      } else if (issue.includes('mobile spacing')) {
+        registerIssueData(`technical-${idx}`,
+          'Mobile Spacing Issues',
+          'These classes have spacing that increases on smaller breakpoints, which is usually unintentional.',
+          () => {
+            const bpIssues = metrics.technical.data.breakpointAnalysis.breakpointIssues || [];
+            const mobileIssues = bpIssues.filter(i => 
+              i.breakpoint.includes('small') || i.breakpoint.includes('tiny') || i.breakpoint.includes('mobile')
+            );
+            if (mobileIssues.length === 0) {
+              return `<p class="empty-msg">No specific mobile issues recorded</p>`;
+            }
+            return mobileIssues.slice(0, 8).map(issue => {
+              const bpName = BREAKPOINT_NAMES[issue.breakpoint] || issue.breakpoint;
+              return `
+              <div class="issue-list-item">
+                <div class="issue-list-item-header">
+                  <span class="issue-list-item-class">.${escapeHtml(issue.class)}</span>
+                  <span class="issue-list-item-badge medium">${escapeHtml(bpName)}</span>
+                </div>
+                <div class="issue-list-item-detail">${escapeHtml(issue.issue)}</div>
+              </div>
+            `}).join('');
           }
         );
       } else {
