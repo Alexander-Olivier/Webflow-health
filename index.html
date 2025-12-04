@@ -332,7 +332,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.10</span></h1>
+      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.11</span></h1>
       <p>Professional analysis for retainer evaluation and maintainability assessment</p>
     </header>
 
@@ -1807,14 +1807,18 @@ function analyzeComponents(aggregated, frameworkConfig) {
   
   // Scoring
   
-  // Navigation not a component = serious issue
-  if (!navAnalysis.isComponent && navAnalysis.found) {
+  // Navigation inconsistent structure = likely not a component
+  // Only penalize if we have multiple pages AND structure is inconsistent
+  if (navAnalysis.found && navAnalysis.isComponent === false) {
     score -= 4;
     issues.push('Navigation is not a component');
+  } else if (navAnalysis.found && navAnalysis.isComponent === true) {
+    // Good! Nav appears to be a component (consistent structure)
+    // Could add bonus here
   }
   
-  // Footer not a component = serious issue  
-  if (!footerAnalysis.isComponent && footerAnalysis.found) {
+  // Footer inconsistent structure = likely not a component
+  if (footerAnalysis.found && footerAnalysis.isComponent === false) {
     score -= 3;
     issues.push('Footer is not a component');
   }
@@ -1828,18 +1832,13 @@ function analyzeComponents(aggregated, frameworkConfig) {
     issues.push(`${patternAnalysis.shouldBeComponents.length} repeated patterns could be components`);
   }
   
-  // Low component usage across pages
-  if (componentAnalysis.totalComponents === 0 && pageCount > 1) {
-    score -= 2;
-    issues.push('No components detected');
-  } else if (componentAnalysis.avgPerPage < 2 && pageCount > 2) {
-    score -= 1;
-    issues.push('Low component usage');
-  }
+  // Note: We can't directly detect component usage from page JSON
+  // Components appear as their contents, not as Symbol nodes
+  // So we rely on structure consistency instead
   
   // Bonus for good practices
-  if (variableAnalysis.hasVariables && componentAnalysis.totalComponents > 0) {
-    score = Math.min(15, score + 1); // Bonus for using variables
+  if (variableAnalysis.hasVariables) {
+    score = Math.min(15, score + 1); // Bonus for using CSS variables
   }
   
   // Build historical context
@@ -1853,7 +1852,7 @@ function analyzeComponents(aggregated, frameworkConfig) {
   return {
     score: Math.max(0, score),
     max: 15,
-    detail: `${componentAnalysis.uniqueComponents} unique components, ${componentAnalysis.totalComponents} instances`,
+    detail: `Nav: ${navAnalysis.isComponent === true ? '✓ consistent' : navAnalysis.isComponent === false ? '✗ inconsistent' : '?'}, Footer: ${footerAnalysis.isComponent === true ? '✓ consistent' : footerAnalysis.isComponent === false ? '✗ inconsistent' : '?'}`,
     issues,
     data: {
       navAnalysis,
@@ -1863,68 +1862,24 @@ function analyzeComponents(aggregated, frameworkConfig) {
       variableAnalysis,
       siteAge,
       historicalNote,
-      // Debug info to help diagnose component detection
+      // Debug info
       debug: {
         totalNodes: allNodes.length,
-        uniqueNodeTypes: [...new Set(allNodes.map(n => n.type))],
-        nodesWithSymbolId: allNodes.filter(n => n.symbolId).length,
-        nodesWithSym: allNodes.filter(n => n.sym).length,
-        symbolTypeNodes: allNodes.filter(n => n.type === 'Symbol' || n.type === 'symbol').length,
-        navInstancesFound: navAnalysis.instances?.length || 0,
-        footerInstancesFound: footerAnalysis.instances?.length || 0
+        uniqueNodeTypes: [...new Set(allNodes.map(n => n.type))].slice(0, 20),
+        navDetectionMethod: navAnalysis.detectionMethod,
+        footerDetectionMethod: footerAnalysis.detectionMethod
       }
     }
   };
 }
 
 function detectNavigation(allNodes, nodeMap, styleMap, pages) {
-  // Look for navigation patterns in the DOM structure
   const navPatterns = {
     found: false,
     isComponent: false,
     instances: [],
     structure: null
   };
-  
-  // First, find all Symbol/Component nodes by checking multiple possible indicators
-  const symbolNodes = new Map(); // nodeId -> symbolInfo
-  
-  allNodes.forEach(node => {
-    // Check all possible ways Webflow might mark a component
-    const isSymbol = 
-      node.type === 'Symbol' || 
-      node.type === 'CommerceSymbol' ||
-      node.type === 'symbol' ||
-      !!node.symbolId ||
-      !!node.sym ||
-      !!node.component ||
-      !!node.componentId;
-    
-    if (isSymbol) {
-      symbolNodes.set(node._id, {
-        id: node._id,
-        symbolId: node.symbolId || node.sym || node.componentId,
-        type: node.type,
-        page: node.pageName
-      });
-    }
-  });
-  
-  // Build a map of nodeId -> parent symbol (if any)
-  const nodeToSymbol = new Map();
-  
-  // For each symbol, mark all descendants as belonging to that symbol
-  function markDescendants(nodeId, symbolId) {
-    nodeToSymbol.set(nodeId, symbolId);
-    const node = nodeMap[nodeId];
-    if (node?.children) {
-      node.children.forEach(childId => markDescendants(childId, symbolId));
-    }
-  }
-  
-  symbolNodes.forEach((info, nodeId) => {
-    markDescendants(nodeId, info.symbolId || nodeId);
-  });
   
   // Group nodes by page
   const pageNodes = {};
@@ -1933,49 +1888,59 @@ function detectNavigation(allNodes, nodeMap, styleMap, pages) {
     pageNodes[node.pageName].push(node);
   });
   
-  // Track which pages have nav (to avoid duplicates)
+  // Track which pages have nav (to avoid duplicates per page)
   const pagesWithNav = new Map(); // pageName -> navInfo
   
   // Look for nav-like structures on each page
   Object.entries(pageNodes).forEach(([pageName, nodes]) => {
-    // Skip if we already found a nav on this page
     if (pagesWithNav.has(pageName)) return;
     
     for (const node of nodes) {
       const isNav = isNavigationElement(node, nodeMap, styleMap);
       if (isNav.likely) {
-        // Check if this nav is inside a symbol
-        const symbolId = nodeToSymbol.get(node._id);
-        const nodeIsSymbol = symbolNodes.has(node._id);
-        const isInSymbol = !!symbolId || nodeIsSymbol;
+        // Create a structural hash to compare across pages
+        const structureHash = hashNodeStructure(node, nodeMap, styleMap, 3);
         
         pagesWithNav.set(pageName, {
           page: pageName,
           nodeId: node._id,
           type: node.type,
           classes: getClassNames(node, styleMap),
-          isSymbol: isInSymbol,
-          symbolId: symbolId,
+          structureHash,
           confidence: isNav.confidence,
           reason: isNav.reason
         });
-        
-        // Only record first nav found per page
         break;
       }
     }
   });
   
-  // Convert to instances array
   navPatterns.instances = Array.from(pagesWithNav.values());
   navPatterns.found = navPatterns.instances.length > 0;
   
-  // Check if navs are components
-  if (navPatterns.instances.length > 0) {
-    const symbolInstances = navPatterns.instances.filter(i => i.isSymbol);
-    navPatterns.isComponent = symbolInstances.length > 0;
-    navPatterns.componentCount = symbolInstances.length;
-    navPatterns.nonComponentCount = navPatterns.instances.length - symbolInstances.length;
+  // Determine if it's likely a component by checking structure consistency
+  if (navPatterns.instances.length > 1) {
+    const hashes = navPatterns.instances.map(i => i.structureHash);
+    const uniqueHashes = [...new Set(hashes)];
+    
+    // If all (or most) pages have the SAME nav structure, it's likely a component
+    // Components propagate changes, so they stay identical
+    if (uniqueHashes.length === 1) {
+      navPatterns.isComponent = true;
+      navPatterns.detectionMethod = 'identical-structure';
+    } else if (uniqueHashes.length <= 2 && navPatterns.instances.length > 3) {
+      // Allow for 2 variants (like Nav Homepage vs Nav Simple)
+      navPatterns.isComponent = true;
+      navPatterns.detectionMethod = 'variant-components';
+      navPatterns.variantCount = uniqueHashes.length;
+    } else {
+      navPatterns.isComponent = false;
+      navPatterns.detectionMethod = 'inconsistent-structure';
+    }
+  } else if (navPatterns.instances.length === 1) {
+    // Single page - can't determine
+    navPatterns.isComponent = null; // Unknown
+    navPatterns.detectionMethod = 'single-page';
   }
   
   return navPatterns;
@@ -1986,16 +1951,8 @@ function isNavigationElement(node, nodeMap, styleMap) {
   const type = (node.type || '').toLowerCase();
   const tag = (node.tag || '').toLowerCase();
   
-  // If it's a Symbol itself with nav-like naming, it's a nav component
-  if (type === 'symbol' || type === 'commercesymbol' || node.symbolId) {
-    const navClassPatterns = ['nav', 'navbar', 'header', 'menu', 'topbar', 'navigation'];
-    if (classNames.some(c => navClassPatterns.some(p => c.includes(p)))) {
-      return { likely: true, confidence: 'high', reason: 'Nav component (Symbol)' };
-    }
-  }
-  
-  // Direct indicators
-  if (type === 'navbar' || tag === 'nav') {
+  // Direct indicators - Webflow Navbar element
+  if (type === 'navbar' || type === 'navbarwrapper' || tag === 'nav') {
     return { likely: true, confidence: 'high', reason: 'Nav element type' };
   }
   
@@ -2030,39 +1987,6 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
     instances: []
   };
   
-  // Find all Symbol/Component nodes
-  const symbolNodes = new Map();
-  
-  allNodes.forEach(node => {
-    const isSymbol = 
-      node.type === 'Symbol' || 
-      node.type === 'CommerceSymbol' ||
-      node.type === 'symbol' ||
-      !!node.symbolId ||
-      !!node.sym ||
-      !!node.component ||
-      !!node.componentId;
-    
-    if (isSymbol) {
-      symbolNodes.set(node._id, node.symbolId || node.sym || node.componentId || node._id);
-    }
-  });
-  
-  // Build nodeId -> symbol mapping
-  const nodeToSymbol = new Map();
-  
-  function markDescendants(nodeId, symbolId) {
-    nodeToSymbol.set(nodeId, symbolId);
-    const node = nodeMap[nodeId];
-    if (node?.children) {
-      node.children.forEach(childId => markDescendants(childId, symbolId));
-    }
-  }
-  
-  symbolNodes.forEach((symbolId, nodeId) => {
-    markDescendants(nodeId, symbolId);
-  });
-  
   // Group nodes by page
   const pageNodes = {};
   allNodes.forEach(node => {
@@ -2070,7 +1994,7 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
     pageNodes[node.pageName].push(node);
   });
   
-  // Track which pages have footer (to avoid duplicates)
+  // Track which pages have footer
   const pagesWithFooter = new Map();
   
   Object.entries(pageNodes).forEach(([pageName, nodes]) => {
@@ -2079,19 +2003,16 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
     for (const node of nodes) {
       const isFooter = isFooterElement(node, nodeMap, styleMap);
       if (isFooter.likely) {
-        const symbolId = nodeToSymbol.get(node._id);
-        const nodeIsSymbol = symbolNodes.has(node._id);
-        const isInSymbol = !!symbolId || nodeIsSymbol;
+        const structureHash = hashNodeStructure(node, nodeMap, styleMap, 3);
         
         pagesWithFooter.set(pageName, {
           page: pageName,
           nodeId: node._id,
           type: node.type,
           classes: getClassNames(node, styleMap),
-          isSymbol: isInSymbol,
+          structureHash,
           confidence: isFooter.confidence
         });
-        
         break;
       }
     }
@@ -2100,11 +2021,24 @@ function detectFooter(allNodes, nodeMap, styleMap, pages) {
   footerPatterns.instances = Array.from(pagesWithFooter.values());
   footerPatterns.found = footerPatterns.instances.length > 0;
   
-  if (footerPatterns.instances.length > 0) {
-    const symbolInstances = footerPatterns.instances.filter(i => i.isSymbol);
-    footerPatterns.isComponent = symbolInstances.length > 0;
-    footerPatterns.componentCount = symbolInstances.length;
-    footerPatterns.nonComponentCount = footerPatterns.instances.length - symbolInstances.length;
+  // Determine if it's likely a component by checking structure consistency
+  if (footerPatterns.instances.length > 1) {
+    const hashes = footerPatterns.instances.map(i => i.structureHash);
+    const uniqueHashes = [...new Set(hashes)];
+    
+    if (uniqueHashes.length === 1) {
+      footerPatterns.isComponent = true;
+      footerPatterns.detectionMethod = 'identical-structure';
+    } else if (uniqueHashes.length <= 2 && footerPatterns.instances.length > 3) {
+      footerPatterns.isComponent = true;
+      footerPatterns.detectionMethod = 'variant-components';
+    } else {
+      footerPatterns.isComponent = false;
+      footerPatterns.detectionMethod = 'inconsistent-structure';
+    }
+  } else if (footerPatterns.instances.length === 1) {
+    footerPatterns.isComponent = null;
+    footerPatterns.detectionMethod = 'single-page';
   }
   
   return footerPatterns;
@@ -2114,14 +2048,6 @@ function isFooterElement(node, nodeMap, styleMap) {
   const classNames = getClassNames(node, styleMap).map(c => c.toLowerCase());
   const type = (node.type || '').toLowerCase();
   const tag = (node.tag || '').toLowerCase();
-  
-  // If it's a Symbol itself with footer-like naming, it's a footer component
-  if (type === 'symbol' || type === 'commercesymbol' || node.symbolId) {
-    const footerPatterns = ['footer', 'foot', 'bottom'];
-    if (classNames.some(c => footerPatterns.some(p => c.includes(p)))) {
-      return { likely: true, confidence: 'high', reason: 'Footer component (Symbol)' };
-    }
-  }
   
   if (tag === 'footer') {
     return { likely: true, confidence: 'high', reason: 'Footer tag' };
@@ -2141,27 +2067,19 @@ function isFooterElement(node, nodeMap, styleMap) {
 }
 
 function analyzeComponentUsage(allNodes, pages) {
-  const components = allNodes.filter(n => 
-    n.type === 'Symbol' || n.type === 'CommerceSymbol' || n.symbolId
-  );
-  
-  const uniqueSymbols = new Set(components.map(c => c.symbolId || c._id));
-  
-  // Count per page
-  const perPage = {};
-  components.forEach(c => {
-    if (!perPage[c.pageName]) perPage[c.pageName] = 0;
-    perPage[c.pageName]++;
-  });
+  // Note: Webflow doesn't include Symbol wrapper in page JSON
+  // Components appear as their contents, not as Symbol nodes
+  // So this function now tracks structure patterns instead
   
   const pageCount = pages.length || 1;
-  const avgPerPage = components.length / pageCount;
   
+  // Count pages analyzed
   return {
-    totalComponents: components.length,
-    uniqueComponents: uniqueSymbols.size,
-    avgPerPage,
-    perPage
+    totalComponents: 0, // Can't detect from JSON
+    uniqueComponents: 0,
+    avgPerPage: 0,
+    perPage: {},
+    note: 'Component detection based on structure consistency, not Symbol nodes'
   };
 }
 
@@ -3933,8 +3851,8 @@ function registerAllIssueData(r) {
     metrics.components.issues.forEach((issue, idx) => {
       if (issue.includes('Navigation is not a component')) {
         registerIssueData(`components-${idx}`,
-          'Navigation Not a Component',
-          'Your navigation appears on multiple pages but isn\'t built as a reusable component. This makes updates risky and time-consuming.',
+          'Navigation Structure Inconsistent',
+          'Your navigation has different structures on different pages, suggesting it\'s not using a reusable component.',
           () => {
             const nav = metrics.components.data.navAnalysis;
             const historical = metrics.components.data.historicalNote;
@@ -3942,11 +3860,14 @@ function registerAllIssueData(r) {
             
             let html = `<div class="issue-list-item">
               <div class="issue-list-item-header">
-                <span class="issue-list-item-badge high">Critical Issue</span>
+                <span class="issue-list-item-badge high">Inconsistent Navigation</span>
               </div>
               <div class="issue-list-item-detail">
-                Navigation found on ${nav.instances?.length || 'multiple'} pages but not as a component.<br><br>
-                <strong>Impact:</strong> Every nav update must be made ${nav.instances?.length || 'multiple'} times manually.<br>
+                Navigation found on ${nav.instances?.length || 'multiple'} pages with different structures.<br><br>
+                <strong>Detection:</strong> ${nav.detectionMethod === 'inconsistent-structure' 
+                  ? 'Different nav structures found across pages' 
+                  : nav.detectionMethod || 'Structure analysis'}<br>
+                <strong>Impact:</strong> Changes won't propagate automatically across pages.<br>
                 <strong>Risk:</strong> Inconsistencies, missed updates, increased maintenance time.
               </div>
             </div>`;
@@ -3957,21 +3878,9 @@ function registerAllIssueData(r) {
                   <span class="issue-list-item-badge medium">Found on pages:</span>
                 </div>
                 <div class="issue-list-item-group" style="margin-top: 10px;">
-                  ${[...new Set(nav.instances.map(i => i.page))].slice(0, 10).map(p => 
-                    `<span class="issue-list-item-class">${escapeHtml(p)}</span>`
+                  ${nav.instances.map(i => 
+                    `<span class="issue-list-item-class">${escapeHtml(i.page)}</span>`
                   ).join('')}
-                </div>
-              </div>`;
-              
-              // Show nav instance details for debugging
-              html += `<div class="issue-list-item">
-                <div class="issue-list-item-header">
-                  <span class="issue-list-item-badge" style="background: #333;">Nav elements found:</span>
-                </div>
-                <div class="issue-list-item-detail" style="font-size: 11px; color: #888;">
-                  ${nav.instances.slice(0, 5).map(i => 
-                    `• ${i.page}: type="${i.type}", isSymbol=${i.isSymbol}, classes=[${i.classes.slice(0,2).join(', ')}]`
-                  ).join('<br>')}
                 </div>
               </div>`;
             }
@@ -3987,36 +3896,37 @@ function registerAllIssueData(r) {
               </div>`;
             }
             
-            // Debug info
-            if (debug) {
-              html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a1a2e; border-radius: 6px; border-left: 3px solid #8b5cf6;">
-                <strong style="color: #8b5cf6;">🔍 Debug Info:</strong><br>
-                <span style="font-size: 11px; color: #888; font-family: monospace;">
-                  Node types found: ${debug.uniqueNodeTypes?.join(', ') || 'none'}<br>
-                  Nodes with symbolId: ${debug.nodesWithSymbolId}<br>
-                  Symbol type nodes: ${debug.symbolTypeNodes}<br>
-                  Total nodes: ${debug.totalNodes}
-                </span>
-              </div>`;
-            }
+            // Detection method explanation
+            html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a1a2e; border-radius: 6px; border-left: 3px solid #8b5cf6;">
+              <strong style="color: #8b5cf6;">ℹ️ How we detect components:</strong><br>
+              <span style="font-size: 12px; color: #888;">
+                We compare navigation structure across pages. If the structure is identical, 
+                it's likely a component (changes propagate automatically). Different structures 
+                suggest manual duplication.
+              </span>
+            </div>`;
             
             return html;
           }
         );
       } else if (issue.includes('Footer is not a component')) {
         registerIssueData(`components-${idx}`,
-          'Footer Not a Component',
-          'Your footer appears on multiple pages but isn\'t built as a reusable component.',
+          'Footer Structure Inconsistent',
+          'Your footer has different structures on different pages, suggesting it\'s not using a reusable component.',
           () => {
             const footer = metrics.components.data.footerAnalysis;
             const historical = metrics.components.data.historicalNote;
+            
             let html = `<div class="issue-list-item">
               <div class="issue-list-item-header">
-                <span class="issue-list-item-badge high">Critical Issue</span>
+                <span class="issue-list-item-badge high">Inconsistent Footer</span>
               </div>
               <div class="issue-list-item-detail">
-                Footer found on ${footer.instances?.length || 'multiple'} pages but not as a component.<br><br>
-                <strong>Impact:</strong> Footer updates (links, copyright year, etc.) must be done manually on each page.<br>
+                Footer found on ${footer.instances?.length || 'multiple'} pages with different structures.<br><br>
+                <strong>Detection:</strong> ${footer.detectionMethod === 'inconsistent-structure' 
+                  ? 'Different footer structures found across pages' 
+                  : footer.detectionMethod || 'Structure analysis'}<br>
+                <strong>Impact:</strong> Footer updates won't propagate automatically.<br>
                 <strong>Risk:</strong> Outdated information, inconsistent footer content.
               </div>
             </div>`;
@@ -4031,6 +3941,14 @@ function registerAllIssueData(r) {
                 <strong style="color: #3b82f6;">📅 Historical Note:</strong> ${escapeHtml(historical)}
               </div>`;
             }
+            
+            html += `<div class="issue-list-item" style="margin-top: 12px; padding: 12px; background: #1a1a2e; border-radius: 6px; border-left: 3px solid #8b5cf6;">
+              <strong style="color: #8b5cf6;">ℹ️ How we detect components:</strong><br>
+              <span style="font-size: 12px; color: #888;">
+                We compare footer structure across pages. Identical structures suggest a component is in use.
+                Different structures suggest manual duplication or missing component.
+              </span>
+            </div>`;
             
             return html;
           }
