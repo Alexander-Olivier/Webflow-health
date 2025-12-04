@@ -332,7 +332,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.5</span></h1>
+      <h1>🏥 Webflow Project Health <span style="font-size: 14px; font-weight: 400; color: #64748b; margin-left: 8px;">v2.6</span></h1>
       <p>Professional analysis for retainer evaluation and maintainability assessment</p>
     </header>
 
@@ -1449,7 +1449,13 @@ function extractSpacing(styles) {
     while ((match = spacingRe.exec(css)) !== null) {
       const value = parseFloat(match[1]);
       const unit = match[2];
-      const property = match[0].split(':')[0].trim();
+      const fullProperty = match[0].split(':')[0].trim();
+      
+      // Get property category (padding, margin, or gap)
+      let category = 'other';
+      if (fullProperty.startsWith('padding')) category = 'padding';
+      else if (fullProperty.startsWith('margin')) category = 'margin';
+      else if (fullProperty.includes('gap')) category = 'gap';
       
       // Convert to px for comparison (assuming 16px base)
       let pxValue = value;
@@ -1458,13 +1464,14 @@ function extractSpacing(styles) {
       
       const key = `${pxValue}px`;
       if (!values.has(key)) {
-        values.set(key, { value: pxValue, original: `${value}${unit}`, classes: [], properties: [] });
+        values.set(key, { value: pxValue, original: `${value}${unit}`, classes: [], properties: [], categories: new Set() });
       }
       const entry = values.get(key);
       if (!entry.classes.includes(style.name)) {
         entry.classes.push(style.name);
       }
-      entry.properties.push({ property, class: style.name });
+      entry.properties.push({ property: fullProperty, class: style.name, category });
+      entry.categories.add(category);
     }
   });
   
@@ -1504,7 +1511,7 @@ function analyzeSpacingPatterns(spacing) {
     };
   });
   
-  // Find near-duplicate spacing (e.g., 15px and 16px)
+  // Find near-duplicate spacing (e.g., 15px and 16px) - only compare SAME property types
   const nearDuplicates = [];
   for (let i = 0; i < unique.length; i++) {
     for (let j = i + 1; j < unique.length; j++) {
@@ -1514,13 +1521,22 @@ function analyzeSpacingPatterns(spacing) {
         const key2 = `${unique[j]}px`;
         const data1 = byValue?.get(key1);
         const data2 = byValue?.get(key2);
-        nearDuplicates.push({ 
-          v1: unique[i], 
-          v2: unique[j], 
-          diff,
-          classes1: data1?.classes || [],
-          classes2: data2?.classes || []
-        });
+        
+        // Only flag if they share at least one property category (padding vs padding, etc)
+        const categories1 = data1?.categories || new Set();
+        const categories2 = data2?.categories || new Set();
+        const sharedCategories = [...categories1].filter(c => categories2.has(c));
+        
+        if (sharedCategories.length > 0) {
+          nearDuplicates.push({ 
+            v1: unique[i], 
+            v2: unique[j], 
+            diff,
+            classes1: data1?.classes || [],
+            classes2: data2?.classes || [],
+            sharedCategory: sharedCategories[0] // e.g., 'padding', 'margin', 'gap'
+          });
+        }
       }
     }
   }
@@ -3099,11 +3115,14 @@ function registerAllIssueData(r) {
               html += nearDupes.map(s => `
                 <div class="issue-list-item">
                   <div class="issue-list-item-header">
-                    <span class="issue-list-item-badge medium">Near-duplicate: ${s.v1}px vs ${s.v2}px</span>
+                    <span class="issue-list-item-badge medium">Near-duplicate ${s.sharedCategory || 'spacing'}: ${s.v1}px vs ${s.v2}px</span>
                   </div>
                   <div class="issue-list-item-detail">
                     <strong>${s.v1}px used in:</strong> ${s.classes1.slice(0, 5).map(c => '.' + c).join(', ')}${s.classes1.length > 5 ? ` +${s.classes1.length - 5} more` : ''}<br>
                     <strong>${s.v2}px used in:</strong> ${s.classes2.slice(0, 5).map(c => '.' + c).join(', ')}${s.classes2.length > 5 ? ` +${s.classes2.length - 5} more` : ''}
+                  </div>
+                  <div class="issue-list-item-detail" style="margin-top: 10px; padding: 10px; background: #1a2a3a; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                    <strong style="color: #3b82f6;">💡 Tip:</strong> Consider using CSS variables for consistent ${s.sharedCategory || 'spacing'} values
                   </div>
                 </div>
               `).join('');
