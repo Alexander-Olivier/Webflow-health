@@ -998,8 +998,11 @@ function aggregateData() {
         });
       } else {
         const existing = styleMap.get(style._id);
-        existing.usedOnPages.push(page.name);
-        existing.pageIndices.push(pageIndex);
+        // Only add page if not already tracked
+        if (!existing.usedOnPages.includes(page.name)) {
+          existing.usedOnPages.push(page.name);
+          existing.pageIndices.push(pageIndex);
+        }
       }
     });
     
@@ -1183,43 +1186,61 @@ function detectNamingConventions(classNames) {
 }
 
 function findNumberedWithSameCss(styles) {
-  // Group by normalized CSS
-  const cssToStyles = new Map();
+  // Group styles by their BASE name (without trailing numbers or -copy suffix)
+  const baseGroups = new Map();
   
   styles.forEach(style => {
-    if (style.styleLess && style.styleLess.length > 5) {
-      const normalized = normalizeCss(style.styleLess);
-      if (!cssToStyles.has(normalized)) {
-        cssToStyles.set(normalized, []);
-      }
-      // Only add if not already in the list (avoid duplicates from multi-page)
-      const existing = cssToStyles.get(normalized);
-      if (!existing.some(s => s.name === style.name)) {
-        existing.push({
-          name: style.name,
-          id: style._id,
-          isCombo: style.comb === '&',
-          css: style.styleLess
-        });
-      }
+    if (!style.styleLess || style.styleLess.length < 5) return;
+    
+    const name = style.name || '';
+    // Extract base name: heading-1 -> heading, card-copy -> card, section-2-copy -> section-2
+    const baseName = name
+      .replace(/-copy(-\d+)?$/i, '')  // Remove -copy and -copy-2
+      .replace(/-?\d+$/, '');          // Remove trailing numbers
+    
+    if (!baseName || baseName === name) return; // Skip if no number/copy suffix
+    
+    const key = baseName.toLowerCase();
+    if (!baseGroups.has(key)) {
+      baseGroups.set(key, []);
     }
+    baseGroups.get(key).push({
+      name: style.name,
+      baseName: baseName,
+      id: style._id,
+      isCombo: style.comb === '&',
+      css: style.styleLess,
+      normalizedCss: normalizeCss(style.styleLess)
+    });
   });
   
-  // Filter to groups with multiple classes that have numbered patterns
+  // Now find groups where multiple classes have the SAME CSS
   const groups = [];
   
-  cssToStyles.forEach((styleGroup, css) => {
-    if (styleGroup.length > 1) {
-      // Check if any have numbered patterns
-      const hasNumbered = styleGroup.some(s => /[-_]?\d+$/.test(s.name) || /-copy/.test(s.name));
-      if (hasNumbered) {
+  baseGroups.forEach((styleGroup, baseName) => {
+    if (styleGroup.length < 2) return;
+    
+    // Sub-group by identical CSS
+    const cssBuckets = new Map();
+    styleGroup.forEach(s => {
+      if (!cssBuckets.has(s.normalizedCss)) {
+        cssBuckets.set(s.normalizedCss, []);
+      }
+      cssBuckets.get(s.normalizedCss).push(s);
+    });
+    
+    // Only flag buckets with 2+ classes (same base, same CSS)
+    cssBuckets.forEach((bucket, css) => {
+      if (bucket.length >= 2) {
         groups.push({
-          styles: styleGroup,
-          css: css.substring(0, 150),
-          count: styleGroup.length
+          baseName: baseName,
+          styles: bucket,
+          css: bucket[0].css.substring(0, 150),
+          count: bucket.length,
+          suggestion: `Merge into .${baseName}`
         });
       }
-    }
+    });
   });
   
   return groups;
@@ -2943,14 +2964,14 @@ function registerAllIssueData(r) {
       if (issue.includes('numbered classes with identical CSS')) {
         registerIssueData(`naming-${idx}`, 
           'Numbered Classes with Identical CSS',
-          'These classes have the same CSS properties. If they\'re utility classes used as combos, consider if that\'s intentional. Otherwise, consolidate into a single class.',
+          'These classes share a base name and have identical CSS. They should be merged into a single class.',
           () => {
             const groups = metrics.naming.data.numberedWithSameCss || [];
             if (groups.length === 0) return '<p class="empty-msg">No details available</p>';
             return groups.map(group => `
               <div class="issue-list-item">
                 <div class="issue-list-item-header">
-                  <span class="issue-list-item-badge high">${group.count} classes with identical CSS</span>
+                  <span class="issue-list-item-badge high">${group.count} classes should be merged</span>
                 </div>
                 <div class="issue-list-item-group">
                   ${group.styles.map(s => `
@@ -2960,10 +2981,8 @@ function registerAllIssueData(r) {
                   `).join('')}
                 </div>
                 <div class="issue-list-item-css">${escapeHtml(group.css)}${group.css.length >= 150 ? '...' : ''}</div>
-                <div class="issue-list-item-detail" style="margin-top: 10px;">
-                  ${group.styles.some(s => s.isCombo) 
-                    ? '⚠️ Some are combo classes - check if utility class is being misused' 
-                    : 'Consider merging into one semantic class'}
+                <div class="issue-list-item-detail" style="margin-top: 12px; padding: 10px; background: #1a3a1a; border-radius: 6px; border-left: 3px solid #22c55e;">
+                  <strong style="color: #22c55e;">✓ Suggestion:</strong> ${escapeHtml(group.suggestion)}
                 </div>
               </div>
             `).join('');
@@ -3178,19 +3197,33 @@ function registerAllIssueData(r) {
             if (nesting.deepNodes && nesting.deepNodes.length > 0) {
               html += `<div class="issue-list-item">
                 <div class="issue-list-item-header">
-                  <span class="issue-list-item-badge medium">Deepest elements</span>
+                  <span class="issue-list-item-badge medium">Deepest elements (${nesting.maxDepth} levels deep)</span>
                 </div>
                 <div class="issue-list-item-detail">
+                  <p style="margin-bottom: 12px; color: #888;">To find these in Webflow, follow the path from the root:</p>
                   ${nesting.deepNodes.slice(0, 5).map(node => `
-                    <div style="margin: 8px 0; padding: 10px; background: #1a1a1a; border-radius: 6px;">
-                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <div style="margin: 12px 0; padding: 12px; background: #1a1a1a; border-radius: 8px; border-left: 3px solid #f97316;">
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+                        <strong style="color: #fff;">Target element:</strong>
                         <span style="color: #4a9eff;">&lt;${node.tag || 'div'}&gt;</span>
                         <span style="color: #a78bfa;">${node.type}</span>
-                        ${node.classes.length > 0 ? `<span style="color: #00d4aa;">.${node.classes.join(' .')}</span>` : '<span style="color: #666;">(no class)</span>'}
+                        ${node.classes.length > 0 
+                          ? `<span style="color: #00d4aa;">.${node.classes.join(' .')}</span>` 
+                          : '<span style="color: #666; font-style: italic;">(no class applied)</span>'}
                       </div>
-                      ${node.path ? `
-                        <div style="margin-top: 8px; font-size: 11px; color: #666;">
-                          Path: ${node.path.slice(-4).map(p => p.classes.length > 0 ? '.' + p.classes[0] : p.type).join(' → ')}
+                      ${node.path && node.path.length > 0 ? `
+                        <div style="font-size: 12px; color: #888; margin-top: 8px;">
+                          <strong style="color: #aaa;">Full path from root:</strong>
+                          <div style="margin-top: 6px; padding: 8px; background: #0a0a0a; border-radius: 6px; font-family: 'SF Mono', Monaco, monospace; overflow-x: auto;">
+                            ${node.path.map((p, i) => {
+                              const label = p.classes.length > 0 ? '.' + p.classes[0] : `[${p.type}]`;
+                              const color = p.classes.length > 0 ? '#00d4aa' : '#666';
+                              return `<span style="color: ${color}">${escapeHtml(label)}</span>`;
+                            }).join('<span style="color: #444; margin: 0 4px;">→</span>')}
+                          </div>
+                        </div>
+                        <div style="font-size: 11px; color: #666; margin-top: 8px;">
+                          💡 In Webflow Navigator, look for: ${node.path.filter(p => p.classes.length > 0).slice(0, 3).map(p => '.' + p.classes[0]).join(' inside ') || 'unnamed elements (add classes to find easier)'}
                         </div>
                       ` : ''}
                     </div>
